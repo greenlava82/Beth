@@ -97,7 +97,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Visual Metronome
   late AnimationController _metronomeController;
   late Animation<double> _pulseAnimation;
-  bool _isMetronomePlaying = true;
+  bool _isMetronomePlaying = false;
 
   // Audio Recording & BPM Detection
   final AudioRecorder _audioRecorder = AudioRecorder();
