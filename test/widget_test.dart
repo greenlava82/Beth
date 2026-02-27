@@ -8,7 +8,7 @@ void main() {
     await tester.pumpWidget(const BpmMetronomeApp());
 
     // Verify that our title is present.
-    expect(find.text('BPM Metronome'), findsOneWidget);
+    expect(find.text('Metronome - Default Setlist'), findsOneWidget);
     
     // Verify that the first setlist item is present.
     expect(find.text('Song 1 (Slow)'), findsOneWidget);

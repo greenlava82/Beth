@@ -31,10 +31,17 @@ class BpmMetronomeApp extends StatelessWidget {
 }
 
 class SetlistItem {
-  final String name;
-  final int bpm;
+  String name;
+  int bpm;
 
   SetlistItem(this.name, this.bpm);
+}
+
+class Playlist {
+  String name;
+  List<SetlistItem> items;
+
+  Playlist(this.name, this.items);
 }
 
 class MetronomeScreen extends StatefulWidget {
@@ -46,13 +53,16 @@ class MetronomeScreen extends StatefulWidget {
 
 class _MetronomeScreenState extends State<MetronomeScreen>
     with SingleTickerProviderStateMixin {
-  // Setlist State
-  final List<SetlistItem> _setlist = [
-    SetlistItem('Song 1 (Slow)', 80),
-    SetlistItem('Song 2 (Upbeat)', 120),
-    SetlistItem('Song 3 (Fast)', 160),
-    SetlistItem('Song 4 (Groove)', 105),
+  // Playlist State
+  final List<Playlist> _playlists = [
+    Playlist('Default Setlist', [
+      SetlistItem('Song 1 (Slow)', 80),
+      SetlistItem('Song 2 (Upbeat)', 120),
+      SetlistItem('Song 3 (Fast)', 160),
+      SetlistItem('Song 4 (Groove)', 105),
+    ]),
   ];
+  int _currentPlaylistIndex = 0;
   int _currentSetlistIndex = 0;
 
   // Visual Metronome
@@ -120,7 +130,19 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   }
 
   void _updateMetronomeTempo() {
-    final targetBpm = _setlist[_currentSetlistIndex].bpm;
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) {
+      _metronomeController.stop();
+      _metronomeController.reset();
+      return;
+    }
+    
+    // Bounds check in case playlist was edited
+    if (_currentSetlistIndex >= playlist.items.length) {
+      _currentSetlistIndex = 0;
+    }
+
+    final targetBpm = playlist.items[_currentSetlistIndex].bpm;
     final msPerBeat = (60000 / targetBpm).round();
     _metronomeController.duration = Duration(milliseconds: msPerBeat);
     if (_isMetronomePlaying) {
@@ -140,9 +162,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   void _advanceSetlist() {
     setState(() {
-      _currentSetlistIndex = (_currentSetlistIndex + 1) % _setlist.length;
-      _isMetronomePlaying = true; // Auto-play on next song
-      _updateMetronomeTempo();
+      final playlist = _playlists[_currentPlaylistIndex];
+      if (playlist.items.isNotEmpty) {
+        _currentSetlistIndex = (_currentSetlistIndex + 1) % playlist.items.length;
+        _isMetronomePlaying = true; // Auto-play on next song
+        _updateMetronomeTempo();
+      }
     });
   }
 
@@ -154,7 +179,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         if ((status >= 0x90 && status <= 0x9F) ||
             (status >= 0xB0 && status <= 0xBF)) {
           // Simplistic trigger: any Note On or CC advances the setlist
-          // A real app might filter by specific CC or Note value.
           SchedulerBinding.instance.addPostFrameCallback((_) {
             _advanceSetlist();
           });
@@ -240,7 +264,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
 
     // Filter reasonable beat intervals (40 to 220 BPM)
-    // 60000 / 220 = 272ms, 60000 / 40 = 1500ms
     intervals = intervals
         .where((interval) => interval >= 272 && interval <= 1500)
         .toList();
@@ -268,13 +291,117 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     super.dispose();
   }
 
+  Widget _buildDrawer() {
+    return Drawer(
+      child: Column(
+        children: [
+          const DrawerHeader(
+            decoration: BoxDecoration(color: Colors.teal),
+            child: Center(
+              child: Text('Playlists', style: TextStyle(color: Colors.white, fontSize: 24)),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _playlists.length,
+              itemBuilder: (context, index) {
+                final playlist = _playlists[index];
+                return ListTile(
+                  title: Text(playlist.name),
+                  subtitle: Text('${playlist.items.length} songs'),
+                  selected: _currentPlaylistIndex == index,
+                  onTap: () {
+                    setState(() {
+                      _currentPlaylistIndex = index;
+                      _currentSetlistIndex = 0;
+                      _updateMetronomeTempo();
+                    });
+                    Navigator.pop(context);
+                  },
+                  trailing: IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: () {
+                      Navigator.pop(context); // close drawer
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PlaylistEditScreen(
+                            playlist: playlist,
+                            onChanged: () {
+                              setState(() {});
+                              _updateMetronomeTempo();
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.add),
+            title: const Text('New Playlist'),
+            onTap: () {
+              Navigator.pop(context); // close drawer
+              _showAddPlaylistDialog();
+            },
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  void _showAddPlaylistDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('New Playlist'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Playlist Name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final newName = controller.text.trim();
+                if (newName.isNotEmpty) {
+                  setState(() {
+                    _playlists.add(Playlist(newName, []));
+                  });
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currentItem = _setlist[_currentSetlistIndex];
+    final playlist = _playlists[_currentPlaylistIndex];
+    
+    // Fallback if the active playlist has no songs
+    final currentItem = playlist.items.isNotEmpty
+        ? playlist.items[_currentSetlistIndex]
+        : SetlistItem('Empty Playlist', 120);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('BPM Metronome'),
+        title: Text('Metronome - ${playlist.name}'),
         actions: [
           IconButton(
             icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),
@@ -290,6 +417,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           )
         ],
       ),
+      drawer: _buildDrawer(),
       body: Column(
         children: [
           // Top: BPM Graph
@@ -368,106 +496,278 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                  // Pulse Indicator
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // To keep it centered, we can add a spacer or just let the Row align center
-                      const SizedBox(width: 48), // Balance the icon button width
-                      AnimatedBuilder(
-                        animation: _pulseAnimation,
-                        builder: (context, child) {
-                          return Container(
-                            width: 150,
-                            height: 150,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _isMetronomePlaying
-                                  ? Theme.of(context).colorScheme.secondary.withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
-                                  : Theme.of(context).colorScheme.surfaceContainerHighest,
-                              boxShadow: [
-                                if (_isMetronomePlaying)
-                                  BoxShadow(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .secondary
-                                        .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
-                                    blurRadius: 30,
-                                    spreadRadius: 10,
+                    // Pulse Indicator
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(width: 48), // Balance the icon button width
+                        AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, child) {
+                            return Container(
+                              width: 150,
+                              height: 150,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _isMetronomePlaying && playlist.items.isNotEmpty
+                                    ? Theme.of(context).colorScheme.secondary.withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
+                                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                boxShadow: [
+                                  if (_isMetronomePlaying && playlist.items.isNotEmpty)
+                                    BoxShadow(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .secondary
+                                          .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
+                                      blurRadius: 30,
+                                      spreadRadius: 10,
+                                    ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${currentItem.bpm}',
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
                                   ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Text(
-                                '${currentItem.bpm}',
-                                style: const TextStyle(
-                                  fontSize: 48,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 16),
-                      IconButton(
-                        iconSize: 32,
-                        icon: Icon(_isMetronomePlaying ? Icons.stop_circle_outlined : Icons.play_circle_fill),
-                        color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
-                        onPressed: _toggleMetronome,
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 48),
-                  
-                  // Setlist Info
-                  Text(
-                    'CURRENT',
-                    style: TextStyle(
-                      color: Colors.grey[400],
-                      letterSpacing: 2,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 16),
+                        IconButton(
+                          iconSize: 32,
+                          icon: Icon(_isMetronomePlaying ? Icons.stop_circle_outlined : Icons.play_circle_fill),
+                          color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
+                          onPressed: playlist.items.isEmpty ? null : _toggleMetronome,
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    currentItem.name,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Controls
-                  ElevatedButton.icon(
-                    onPressed: _advanceSetlist,
-                    icon: const Icon(Icons.skip_next, size: 32),
-                    label: const Text(
-                      'NEXT SONG',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
+                    
+                    const SizedBox(height: 48),
+                    
+                    // Setlist Info
+                    Text(
+                      'CURRENT',
+                      style: TextStyle(
+                        color: Colors.grey[400],
+                        letterSpacing: 2,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'MIDI trigger active (Any CC/Note)',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      currentItem.name,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    
+                    const SizedBox(height: 32),
+                    
+                    // Controls
+                    ElevatedButton.icon(
+                      onPressed: playlist.items.isEmpty ? null : _advanceSetlist,
+                      icon: const Icon(Icons.skip_next, size: 32),
+                      label: const Text(
+                        'NEXT SONG',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'MIDI trigger active (Any CC/Note)',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-            ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class PlaylistEditScreen extends StatefulWidget {
+  final Playlist playlist;
+  final VoidCallback onChanged;
+
+  const PlaylistEditScreen({
+    super.key,
+    required this.playlist,
+    required this.onChanged,
+  });
+
+  @override
+  State<PlaylistEditScreen> createState() => _PlaylistEditScreenState();
+}
+
+class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Edit: ${widget.playlist.name}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: _showRenamePlaylistDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: () => _showSongDialog(null, null),
+          ),
+        ],
+      ),
+      body: widget.playlist.items.isEmpty
+          ? const Center(child: Text('No songs in this playlist. Tap + to add.'))
+          : ReorderableListView.builder(
+              itemCount: widget.playlist.items.length,
+              onReorder: (oldIndex, newIndex) {
+                setState(() {
+                  if (oldIndex < newIndex) {
+                    newIndex -= 1;
+                  }
+                  final item = widget.playlist.items.removeAt(oldIndex);
+                  widget.playlist.items.insert(newIndex, item);
+                  widget.onChanged();
+                });
+              },
+              itemBuilder: (context, index) {
+                final song = widget.playlist.items[index];
+                return ListTile(
+                  key: ValueKey('${song.name}_${song.bpm}_$index'),
+                  title: Text(song.name),
+                  subtitle: Text('${song.bpm} BPM'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _showSongDialog(index, song),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.redAccent),
+                        onPressed: () {
+                          setState(() {
+                            widget.playlist.items.removeAt(index);
+                            widget.onChanged();
+                          });
+                        },
+                      ),
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: const Padding(
+                          padding: EdgeInsets.only(left: 8.0, right: 8.0),
+                          child: Icon(Icons.drag_handle),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  void _showRenamePlaylistDialog() {
+    final controller = TextEditingController(text: widget.playlist.name);
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Rename Playlist'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Playlist Name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final newName = controller.text.trim();
+                if (newName.isNotEmpty) {
+                  setState(() {
+                    widget.playlist.name = newName;
+                    widget.onChanged();
+                  });
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSongDialog(int? index, SetlistItem? currentSong) {
+    final nameController = TextEditingController(text: currentSong?.name ?? '');
+    final bpmController = TextEditingController(text: currentSong?.bpm.toString() ?? '120');
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(currentSong == null ? 'Add Song' : 'Edit Song'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                decoration: const InputDecoration(labelText: 'Song Name'),
+                controller: nameController,
+                autofocus: true,
+              ),
+              TextField(
+                decoration: const InputDecoration(labelText: 'BPM'),
+                keyboardType: TextInputType.number,
+                controller: bpmController,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final bpm = int.tryParse(bpmController.text) ?? 120;
+                var name = nameController.text.trim();
+                if (name.isEmpty) name = 'Unnamed Song';
+
+                setState(() {
+                  if (currentSong == null) {
+                    widget.playlist.items.add(SetlistItem(name, bpm));
+                  } else {
+                    currentSong.name = name;
+                    currentSong.bpm = bpm;
+                  }
+                  widget.onChanged();
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
