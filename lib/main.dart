@@ -93,11 +93,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       setState(() {
         _timeCounterMs += 1000;
         final seconds = _timeCounterMs / 1000.0;
-        _bpmHistory.add(FlSpot(seconds, _currentCalculatedBpm));
+        if (_currentCalculatedBpm > 0) {
+          _bpmHistory.add(FlSpot(seconds, _currentCalculatedBpm));
+        } else {
+          _bpmHistory.add(FlSpot.nullSpot);
+        }
 
         // Keep only last 5 minutes
-        if (_bpmHistory.isNotEmpty &&
-            _bpmHistory.last.x - _bpmHistory.first.x > _historyWindowSeconds) {
+        if (_bpmHistory.length > _historyWindowSeconds) {
           _bpmHistory.removeAt(0);
         }
       });
@@ -315,8 +318,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                               borderData: FlBorderData(show: true),
                               minY: 40,
                               maxY: 220,
-                              minX: _bpmHistory.isEmpty ? 0 : math.max(0, _bpmHistory.last.x - _historyWindowSeconds),
-                              maxX: _bpmHistory.isEmpty ? 0 : math.max(_historyWindowSeconds, _bpmHistory.last.x),
+                              minX: (_timeCounterMs / 1000.0) - _historyWindowSeconds,
+                              maxX: _timeCounterMs / 1000.0,
                               lineBarsData: [
                                 LineChartBarData(
                                   spots: _bpmHistory,
