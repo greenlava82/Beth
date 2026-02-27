@@ -386,7 +386,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       IconButton(
                         icon: const Icon(Icons.edit),
                         onPressed: () {
-                          Navigator.pop(context); // close drawer
                           Navigator.push(
                             context,
                             MaterialPageRoute(
