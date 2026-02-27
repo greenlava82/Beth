@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -8,6 +9,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const BpmMetronomeApp());
@@ -35,6 +37,18 @@ class SetlistItem {
   int bpm;
 
   SetlistItem(this.name, this.bpm);
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'bpm': bpm,
+      };
+
+  factory SetlistItem.fromJson(Map<String, dynamic> json) {
+    return SetlistItem(
+      json['name'] as String,
+      json['bpm'] as int,
+    );
+  }
 }
 
 class Playlist {
@@ -42,6 +56,20 @@ class Playlist {
   List<SetlistItem> items;
 
   Playlist(this.name, this.items);
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'items': items.map((item) => item.toJson()).toList(),
+      };
+
+  factory Playlist.fromJson(Map<String, dynamic> json) {
+    return Playlist(
+      json['name'] as String,
+      (json['items'] as List<dynamic>)
+          .map((item) => SetlistItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 }
 
 class MetronomeScreen extends StatefulWidget {
@@ -54,7 +82,7 @@ class MetronomeScreen extends StatefulWidget {
 class _MetronomeScreenState extends State<MetronomeScreen>
     with SingleTickerProviderStateMixin {
   // Playlist State
-  final List<Playlist> _playlists = [
+  List<Playlist> _playlists = [
     Playlist('Default Setlist', [
       SetlistItem('Song 1 (Slow)', 80),
       SetlistItem('Song 2 (Upbeat)', 120),
@@ -64,6 +92,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   ];
   int _currentPlaylistIndex = 0;
   int _currentSetlistIndex = 0;
+  bool _isLoadingPlaylists = true;
 
   // Visual Metronome
   late AnimationController _metronomeController;
@@ -95,6 +124,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   @override
   void initState() {
     super.initState();
+    _loadPlaylists();
     _setupMetronome();
     _setupMidi();
     _requestMicPermissionAndStart();
@@ -118,6 +148,36 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     });
   }
 
+  Future<void> _loadPlaylists() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? playlistsJson = prefs.getString('playlists');
+    
+    if (playlistsJson != null) {
+      try {
+        final List<dynamic> decodedList = jsonDecode(playlistsJson);
+        setState(() {
+          _playlists = decodedList
+              .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
+              .toList();
+        });
+      } catch (e) {
+        // If decoding fails, fallback to default
+        debugPrint("Error loading playlists: \$e");
+      }
+    }
+    
+    setState(() {
+      _isLoadingPlaylists = false;
+    });
+    _updateMetronomeTempo();
+  }
+
+  Future<void> _savePlaylists() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedList = jsonEncode(_playlists.map((p) => p.toJson()).toList());
+    await prefs.setString('playlists', encodedList);
+  }
+
   void _setupMetronome() {
     _metronomeController = AnimationController(vsync: this);
     _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -130,6 +190,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   }
 
   void _updateMetronomeTempo() {
+    if (_playlists.isEmpty) return;
+    
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty) {
       _metronomeController.stop();
@@ -318,23 +380,44 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     });
                     Navigator.pop(context);
                   },
-                  trailing: IconButton(
-                    icon: const Icon(Icons.edit),
-                    onPressed: () {
-                      Navigator.pop(context); // close drawer
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PlaylistEditScreen(
-                            playlist: playlist,
-                            onChanged: () {
-                              setState(() {});
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () {
+                          Navigator.pop(context); // close drawer
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PlaylistEditScreen(
+                                playlist: playlist,
+                                onChanged: () {
+                                  setState(() {});
+                                  _updateMetronomeTempo();
+                                  _savePlaylists();
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      if (_playlists.length > 1) // Only allow delete if it's not the last playlist
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.redAccent),
+                          onPressed: () {
+                            setState(() {
+                              _playlists.removeAt(index);
+                              if (_currentPlaylistIndex >= index && _currentPlaylistIndex > 0) {
+                                _currentPlaylistIndex--;
+                              }
+                              _currentSetlistIndex = 0;
                               _updateMetronomeTempo();
-                            },
-                          ),
+                            });
+                            _savePlaylists();
+                          },
                         ),
-                      );
-                    },
+                    ],
                   ),
                 );
               },
@@ -379,6 +462,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                   setState(() {
                     _playlists.add(Playlist(newName, []));
                   });
+                  _savePlaylists();
                 }
                 Navigator.pop(context);
               },
@@ -392,6 +476,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingPlaylists) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final playlist = _playlists[_currentPlaylistIndex];
     
     // Fallback if the active playlist has no songs

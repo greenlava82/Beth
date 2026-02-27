@@ -1,11 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:bpm_metronome/main.dart';
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
+    // Setup Mock SharedPreferences
+    SharedPreferences.setMockInitialValues({});
+
     // Build our app and trigger a frame.
     await tester.pumpWidget(const BpmMetronomeApp());
+    await tester.pump(const Duration(seconds: 1));
 
     // Verify that our title is present.
     expect(find.text('Metronome - Default Setlist'), findsOneWidget);
