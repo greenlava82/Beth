@@ -58,6 +58,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Visual Metronome
   late AnimationController _metronomeController;
   late Animation<double> _pulseAnimation;
+  bool _isMetronomePlaying = true;
 
   // Audio Recording & BPM Detection
   final AudioRecorder _audioRecorder = AudioRecorder();
@@ -122,12 +123,25 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final targetBpm = _setlist[_currentSetlistIndex].bpm;
     final msPerBeat = (60000 / targetBpm).round();
     _metronomeController.duration = Duration(milliseconds: msPerBeat);
-    _metronomeController.repeat();
+    if (_isMetronomePlaying) {
+      _metronomeController.repeat();
+    } else {
+      _metronomeController.stop();
+      _metronomeController.reset();
+    }
+  }
+
+  void _toggleMetronome() {
+    setState(() {
+      _isMetronomePlaying = !_isMetronomePlaying;
+      _updateMetronomeTempo();
+    });
   }
 
   void _advanceSetlist() {
     setState(() {
       _currentSetlistIndex = (_currentSetlistIndex + 1) % _setlist.length;
+      _isMetronomePlaying = true; // Auto-play on next song
       _updateMetronomeTempo();
     });
   }
@@ -355,41 +369,55 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                   // Pulse Indicator
-                  AnimatedBuilder(
-                    animation: _pulseAnimation,
-                    builder: (context, child) {
-                      return Container(
-                        width: 150,
-                        height: 150,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .secondary
-                              .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt()),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .secondary
-                                  .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
-                              blurRadius: 30,
-                              spreadRadius: 10,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // To keep it centered, we can add a spacer or just let the Row align center
+                      const SizedBox(width: 48), // Balance the icon button width
+                      AnimatedBuilder(
+                        animation: _pulseAnimation,
+                        builder: (context, child) {
+                          return Container(
+                            width: 150,
+                            height: 150,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _isMetronomePlaying
+                                  ? Theme.of(context).colorScheme.secondary.withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
+                                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+                              boxShadow: [
+                                if (_isMetronomePlaying)
+                                  BoxShadow(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .secondary
+                                        .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
+                                    blurRadius: 30,
+                                    spreadRadius: 10,
+                                  ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${currentItem.bpm}',
-                            style: const TextStyle(
-                              fontSize: 48,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                            child: Center(
+                              child: Text(
+                                '${currentItem.bpm}',
+                                style: const TextStyle(
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      );
-                    },
+                          );
+                        },
+                      ),
+                      const SizedBox(width: 16),
+                      IconButton(
+                        iconSize: 32,
+                        icon: Icon(_isMetronomePlaying ? Icons.stop_circle_outlined : Icons.play_circle_fill),
+                        color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
+                        onPressed: _toggleMetronome,
+                      ),
+                    ],
                   ),
                   
                   const SizedBox(height: 48),
