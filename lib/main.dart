@@ -990,253 +990,263 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         ],
       ),
       drawer: _buildDrawer(),
-      body: Column(
-        children: [
-          // Top: BPM Graph
-          Expanded(
-            flex: 2,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Prefer ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
-                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                      ),
-                      Expanded(
-                        child: RangeSlider(
-                          values: _preferredRange,
-                          min: _rangeLimitMin,
-                          max: _rangeLimitMax,
-                          divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
-                          labels: RangeLabels(
-                            '${_preferredRange.start.round()}',
-                            '${_preferredRange.end.round()}',
-                          ),
-                          onChanged: (v) {
-                            // Keep at least 10 BPM between handles.
-                            if (v.end - v.start < 10) return;
-                            _setPreferredRange(v);
-                          },
-                          onChangeEnd: (_) => _savePreferredRange(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Expanded(
-                    child: Stack(
+      // Keep content clear of the system navigation bar (edge-to-edge).
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            // Top: BPM Graph
+            Expanded(
+              flex: 2,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
                       children: [
-                        Positioned.fill(child: _buildTempoChart(context)),
-                        // Detected tempo, overlaid on the top of the graph.
-                        Positioned(
-                          top: 4,
-                          left: 40, // clear of the left axis labels
-                          right: 0,
-                          child: IgnorePointer(child: _buildTempoReadout(context)),
+                        Text(
+                          'Prefer ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
+                          style: TextStyle(color: Colors.grey[400], fontSize: 12),
                         ),
-                        // Confidence light along the bottom of the plot.
-                        Positioned(
-                          bottom: 30, // just above the time labels
-                          left: 40,
-                          right: 0,
-                          child: IgnorePointer(
-                            child: Center(child: _buildConfidenceIndicator(context)),
+                        Expanded(
+                          child: RangeSlider(
+                            values: _preferredRange,
+                            min: _rangeLimitMin,
+                            max: _rangeLimitMax,
+                            divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
+                            labels: RangeLabels(
+                              '${_preferredRange.start.round()}',
+                              '${_preferredRange.end.round()}',
+                            ),
+                            onChanged: (v) {
+                              // Keep at least 10 BPM between handles.
+                              if (v.end - v.start < 10) return;
+                              _setPreferredRange(v);
+                            },
+                            onChangeEnd: (_) => _savePreferredRange(),
                           ),
-                        ),
-                        // History length, bottom-right of the plot.
-                        Positioned(
-                          bottom: 30,
-                          right: 4,
-                          child: _buildHistoryChip(context),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Positioned.fill(child: _buildTempoChart(context)),
+                          // Detected tempo, overlaid on the top of the graph.
+                          Positioned(
+                            top: 4,
+                            left: 40, // clear of the left axis labels
+                            right: 0,
+                            child: IgnorePointer(child: _buildTempoReadout(context)),
+                          ),
+                          // Confidence light along the bottom of the plot.
+                          Positioned(
+                            bottom: 30, // just above the time labels
+                            left: 40,
+                            right: 0,
+                            child: IgnorePointer(
+                              child: Center(child: _buildConfidenceIndicator(context)),
+                            ),
+                          ),
+                          // History length, bottom-right of the plot.
+                          Positioned(
+                            bottom: 30,
+                            right: 4,
+                            child: _buildHistoryChip(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
           
-          const Divider(height: 1, thickness: 2),
+            const Divider(height: 1, thickness: 2),
 
-          // Bottom: Metronome & Setlist
-          Expanded(
-            flex: 3,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              child: SingleChildScrollView(
+            // Bottom: Metronome & Setlist
+            Expanded(
+              flex: 3,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Pulse Indicator, flanked by tempo nudge buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildNudgeColumn(playlist, const [-1, -5]),
-                        const SizedBox(width: 16),
-                        // The circle is also the play/stop button.
-                        Semantics(
-                          button: true,
-                          label: _isMetronomePlaying ? 'Stop metronome' : 'Start metronome',
-                          child: GestureDetector(
-                            onTap: playlist.items.isEmpty ? null : _toggleMetronome,
-                            child: AnimatedBuilder(
-                              animation: _pulseAnimation,
-                              builder: (context, child) {
-                                return Container(
-                                  width: 150,
-                                  height: 150,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: _isMetronomePlaying && playlist.items.isNotEmpty
-                                        ? (_beatIndex == 0
-                                                    // Downbeat: brighter accent colour.
-                                                    ? Theme.of(context).colorScheme.primary
-                                                    : Theme.of(context).colorScheme.secondary)
-                                                .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
-                                        : Theme.of(context).colorScheme.surfaceContainerHighest,
-                                    boxShadow: [
-                                      if (_isMetronomePlaying && playlist.items.isNotEmpty)
-                                        BoxShadow(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .secondary
-                                              .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
-                                          blurRadius: 30,
-                                          spreadRadius: 10,
-                                        ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      // Spacer matching the icon below keeps the
-                                      // number centred in the circle.
-                                      const SizedBox(height: 28),
-                                      Text(
-                                        '${currentItem.bpm}',
-                                        style: const TextStyle(
-                                          fontSize: 48,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      Icon(
-                                        _isMetronomePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                                        size: 28,
-                                        color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        _buildNudgeColumn(playlist, const [1, 5]),
-                      ],
-                    ),
-
-                    const SizedBox(height: 12),
-                    // Beats in the bar; the lit dot is the current beat.
-                    AnimatedBuilder(
-                      animation: _pulseAnimation,
-                      builder: (context, _) => _buildBeatDots(context, playlist),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Capture the heard tempo
-                    FilledButton.tonalIcon(
-                      onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
-                          ? null
-                          : _captureDetectedBpm,
-                      icon: const Icon(Icons.hearing),
-                      label: Text(_currentCalculatedBpm > 0
-                          ? 'Capture ${_currentCalculatedBpm.round()}'
-                          : 'Capture'),
-                    ),
-
-                    const SizedBox(height: 24),
-                    
-                    // Setlist Info — tap to see and jump around the setlist
-                    InkWell(
-                      onTap: playlist.items.isEmpty ? null : _showSetlistSheet,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    // Metronome and song info scroll if they don't fit; the
+                    // song controls below stay pinned so Next is always reachable.
+                    Expanded(
+                      child: SingleChildScrollView(
                         child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
+                            // Pulse Indicator, flanked by tempo nudge buttons
                             Row(
-                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  playlist.items.isEmpty
-                                      ? 'CURRENT'
-                                      : 'SONG ${_currentSetlistIndex + 1} OF ${playlist.items.length}',
-                                  style: TextStyle(
-                                    color: Colors.grey[400],
-                                    letterSpacing: 2,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
+                                _buildNudgeColumn(playlist, const [-1, -5]),
+                                const SizedBox(width: 16),
+                                // The circle is also the play/stop button.
+                                Semantics(
+                                  button: true,
+                                  label: _isMetronomePlaying ? 'Stop metronome' : 'Start metronome',
+                                  child: GestureDetector(
+                                    onTap: playlist.items.isEmpty ? null : _toggleMetronome,
+                                    child: AnimatedBuilder(
+                                      animation: _pulseAnimation,
+                                      builder: (context, child) {
+                                        return Container(
+                                          width: 136,
+                                          height: 136,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: _isMetronomePlaying && playlist.items.isNotEmpty
+                                                ? (_beatIndex == 0
+                                                            // Downbeat: brighter accent colour.
+                                                            ? Theme.of(context).colorScheme.primary
+                                                            : Theme.of(context).colorScheme.secondary)
+                                                        .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
+                                                : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                            boxShadow: [
+                                              if (_isMetronomePlaying && playlist.items.isNotEmpty)
+                                                BoxShadow(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .secondary
+                                                      .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
+                                                  blurRadius: 30,
+                                                  spreadRadius: 10,
+                                                ),
+                                            ],
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              // Spacer matching the icon below keeps the
+                                              // number centred in the circle.
+                                              const SizedBox(height: 28),
+                                              Text(
+                                                '${currentItem.bpm}',
+                                                style: const TextStyle(
+                                                  fontSize: 48,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              Icon(
+                                                _isMetronomePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                                                size: 28,
+                                                color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ),
-                                if (playlist.items.isNotEmpty) ...[
-                                  const SizedBox(width: 6),
-                                  Icon(Icons.queue_music, size: 16, color: Colors.grey[400]),
-                                ],
+                                const SizedBox(width: 16),
+                                _buildNudgeColumn(playlist, const [1, 5]),
                               ],
+                            ),
+
+                            const SizedBox(height: 8),
+                            // Beats in the bar; the lit dot is the current beat.
+                            AnimatedBuilder(
+                              animation: _pulseAnimation,
+                              builder: (context, _) => _buildBeatDots(context, playlist),
                             ),
                             const SizedBox(height: 8),
-                            Text(
-                              currentItem.name,
-                              style: Theme.of(context).textTheme.headlineSmall,
-                              textAlign: TextAlign.center,
+
+                            // Capture the heard tempo
+                            FilledButton.tonalIcon(
+                              onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
+                                  ? null
+                                  : _captureDetectedBpm,
+                              icon: const Icon(Icons.hearing),
+                              label: Text(_currentCalculatedBpm > 0
+                                  ? 'Capture ${_currentCalculatedBpm.round()}'
+                                  : 'Capture'),
                             ),
-                            if (playlist.items.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                [
-                                  currentItem.timeSignature,
-                                  if (currentItem.durationSeconds != null)
-                                    formatDuration(currentItem.durationSeconds!),
-                                ].join('  ·  '),
-                                style: TextStyle(color: Colors.grey[400], fontSize: 13),
-                              ),
-                              if (currentItem.notes.isNotEmpty) ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  currentItem.notes,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.grey[300],
-                                    fontStyle: FontStyle.italic,
-                                  ),
+
+                            const SizedBox(height: 8),
+                    
+                            // Setlist Info — tap to see and jump around the setlist
+                            InkWell(
+                              onTap: playlist.items.isEmpty ? null : _showSetlistSheet,
+                              borderRadius: BorderRadius.circular(16),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          playlist.items.isEmpty
+                                              ? 'CURRENT'
+                                              : 'SONG ${_currentSetlistIndex + 1} OF ${playlist.items.length}',
+                                          style: TextStyle(
+                                            color: Colors.grey[400],
+                                            letterSpacing: 2,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (playlist.items.isNotEmpty) ...[
+                                          const SizedBox(width: 6),
+                                          Icon(Icons.queue_music, size: 16, color: Colors.grey[400]),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      currentItem.name,
+                                      style: Theme.of(context).textTheme.headlineSmall,
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    if (playlist.items.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        [
+                                          currentItem.timeSignature,
+                                          if (currentItem.durationSeconds != null)
+                                            formatDuration(currentItem.durationSeconds!),
+                                        ].join('  ·  '),
+                                        style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                                      ),
+                                      if (currentItem.notes.isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          currentItem.notes,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.grey[300],
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        _isLastSong
+                                            ? 'Last song of the set'
+                                            : 'Up next: ${playlist.items[_currentSetlistIndex + 1].name}'
+                                                ' · ${playlist.items[_currentSetlistIndex + 1].bpm}',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                              ],
-                              const SizedBox(height: 10),
-                              Text(
-                                _isLastSong
-                                    ? 'Last song of the set'
-                                    : 'Up next: ${playlist.items[_currentSetlistIndex + 1].name}'
-                                        ' · ${playlist.items[_currentSetlistIndex + 1].bpm}',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.grey[500], fontSize: 13),
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
                     ),
-                    
-                    const SizedBox(height: 32),
-                    
+                    const SizedBox(height: 8),
                     // Controls
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1269,7 +1279,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 6),
                     Text(
                       'MIDI trigger active (Any CC/Note)',
                       style: TextStyle(color: Colors.grey[500], fontSize: 12),
@@ -1278,8 +1288,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
