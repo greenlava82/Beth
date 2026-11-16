@@ -467,6 +467,36 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     return _minChartWindowSeconds;
   }
 
+  /// BPM axis range fitted to the readings currently on screen, with
+  /// headroom on top for the tempo readout. Returns (minY, maxY, step).
+  (double, double, double) _chartYRange(double minX) {
+    double? lo, hi;
+    for (final spot in _bpmHistory) {
+      if (spot.x.isNaN || spot.x < minX) continue;
+      lo = lo == null ? spot.y : math.min(lo, spot.y);
+      hi = hi == null ? spot.y : math.max(hi, spot.y);
+    }
+    // No readings yet: frame the preferred range.
+    lo ??= _preferredRange.start;
+    hi ??= _preferredRange.end;
+
+    // At least 30 BPM of span so a steady tempo isn't magnified into noise.
+    if (hi - lo < 30) {
+      final mid = (lo + hi) / 2;
+      lo = mid - 15;
+      hi = mid + 15;
+    }
+    final span = hi - lo;
+    final step = span <= 40 ? 10.0 : (span <= 90 ? 20.0 : 40.0);
+    // Bottom padding, then enough headroom that the readings sit in the
+    // lower ~60% of the plot, clear of the overlaid readout.
+    var minY = ((lo - step / 2) / step).floorToDouble() * step;
+    var maxY = ((hi + (hi - minY) * 0.65) / step).ceilToDouble() * step;
+    minY = math.max(0, minY);
+    maxY = math.min(300, maxY);
+    return (minY, maxY, step);
+  }
+
   static String _formatElapsed(double seconds) {
     final s = seconds.round();
     return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
@@ -480,10 +510,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     // During the first 30 s, anchor at 0:00 so the line grows rightward.
     final minX = math.max(0.0, now - window);
     final maxX = math.max(now, window);
+    final (minY, maxY, yStep) = _chartYRange(minX);
     return LineChart(
       LineChartData(
         gridData: FlGridData(
           show: true,
+          horizontalInterval: yStep,
           verticalInterval: labelInterval,
         ),
         titlesData: FlTitlesData(
@@ -507,15 +539,31 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               },
             ),
           ),
-          leftTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 40,
+              interval: yStep,
+              getTitlesWidget: (value, meta) {
+                // Skip off-step edge labels that would collide with a
+                // neighbouring label.
+                if (value % yStep != 0) return const SizedBox.shrink();
+                return SideTitleWidget(
+                  meta: meta,
+                  child: Text(
+                    value.round().toString(),
+                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  ),
+                );
+              },
+            ),
           ),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
         borderData: FlBorderData(show: true),
-        minY: 40,
-        maxY: 220,
+        minY: minY,
+        maxY: maxY,
         rangeAnnotations: RangeAnnotations(
           horizontalRangeAnnotations: [
             HorizontalRangeAnnotation(
@@ -532,6 +580,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           LineChartBarData(
             spots: _bpmHistory,
             isCurved: true,
+            preventCurveOverShooting: true,
             color: colors.primary,
             barWidth: 3,
             isStrokeCapRound: true,
