@@ -57,9 +57,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Visual Metronome
   late AnimationController _metronomeController;
   late Animation<double> _pulseAnimation;
-  // Which beat of the bar the metronome is on (0 = downbeat).
-  int _beatIndex = 0;
-  double _lastPulseValue = 0;
   bool _isMetronomePlaying = false;
 
   // Audio Recording & BPM Detection
@@ -264,21 +261,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         curve: Curves.easeOut,
       ),
     );
-    // Each wrap of the repeating controller is one beat.
-    _metronomeController.addListener(() {
-      final v = _metronomeController.value;
-      if (v < _lastPulseValue) {
-        _beatIndex = (_beatIndex + 1) % _currentBeatsPerBar;
-      }
-      _lastPulseValue = v;
-    });
     _updateMetronomeTempo();
-  }
-
-  int get _currentBeatsPerBar {
-    final playlist = _playlists[_currentPlaylistIndex];
-    if (playlist.items.isEmpty) return 4;
-    return playlist.items[_currentSetlistIndex].beatsPerBar;
   }
 
   void _updateMetronomeTempo() {
@@ -308,10 +291,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     } else {
       _metronomeController.stop();
       _metronomeController.reset();
-      _beatIndex = 0;
-      _lastPulseValue = 0;
     }
-    if (_beatIndex >= _currentBeatsPerBar) _beatIndex = 0;
     _saveSetlistPosition();
   }
 
@@ -370,29 +350,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           onPressed: () => _setSongBpm(song, previous),
         ),
       ));
-  }
-
-  Widget _buildBeatDots(BuildContext context, Playlist playlist) {
-    final colors = Theme.of(context).colorScheme;
-    final n = _currentBeatsPerBar;
-    final playing = _isMetronomePlaying && playlist.items.isNotEmpty;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < n; i++)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            width: i == 0 ? 10 : 8,
-            height: i == 0 ? 10 : 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: playing && i == _beatIndex
-                  ? (i == 0 ? colors.primary : colors.secondary)
-                  : Colors.grey.withAlpha(70),
-            ),
-          ),
-      ],
-    );
   }
 
   Widget _buildNudgeColumn(Playlist playlist, List<int> deltas) {
@@ -459,8 +416,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _currentSetlistIndex = index.clamp(0, playlist.items.length - 1);
       _isMetronomePlaying = true;
       _metronomeController.reset();
-      _beatIndex = 0;
-      _lastPulseValue = 0;
       _updateMetronomeTempo();
       _tempoDetector.reset();
       _currentCalculatedBpm = 0;
@@ -546,7 +501,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       title: Text(song.name),
                       subtitle: Text([
                         '${song.bpm} BPM',
-                        song.timeSignature,
                         if (song.durationSeconds != null)
                           formatDuration(song.durationSeconds!),
                       ].join(' · ')),
@@ -1552,11 +1506,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _isMetronomePlaying && playlist.items.isNotEmpty
-                    ? (_beatIndex == 0
-                                // Downbeat: brighter accent colour.
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context).colorScheme.secondary)
-                            .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
+                    ? Theme.of(context).colorScheme.secondary
+                        .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
                     : Theme.of(context).colorScheme.surfaceContainerHighest,
                 boxShadow: [
                   if (_isMetronomePlaying && playlist.items.isNotEmpty)
@@ -1649,26 +1600,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               textAlign: TextAlign.center,
             ),
             if (playlist.items.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                [
-                  currentItem.timeSignature,
-                  if (currentItem.durationSeconds != null)
-                    formatDuration(currentItem.durationSeconds!),
-                ].join('  ·  '),
-                style: TextStyle(color: Colors.grey[400], fontSize: 13),
-              ),
-              if (currentItem.notes.isNotEmpty) ...[
-                const SizedBox(height: 6),
+              if (currentItem.durationSeconds != null) ...[
+                const SizedBox(height: 4),
                 Text(
-                  currentItem.notes,
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.grey[300],
-                    fontStyle: FontStyle.italic,
-                  ),
+                  formatDuration(currentItem.durationSeconds!),
+                  style: TextStyle(color: Colors.grey[400], fontSize: 13),
                 ),
               ],
               const SizedBox(height: 10),
@@ -1745,11 +1681,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                           children: [
                             _buildMetronomeCircle(context, playlist, currentItem,
                                 size: 112),
-                            const SizedBox(height: 8),
-                            AnimatedBuilder(
-                              animation: _pulseAnimation,
-                              builder: (context, _) => _buildBeatDots(context, playlist),
-                            ),
                           ],
                         ),
                         const SizedBox(width: 16),
@@ -1779,13 +1710,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                             _buildNudgeColumn(playlist, const [1, 5]),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        // Beats in the bar; the lit dot is the current beat.
-                        AnimatedBuilder(
-                          animation: _pulseAnimation,
-                          builder: (context, _) => _buildBeatDots(context, playlist),
-                        ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         _buildCaptureButton(playlist),
                         const SizedBox(height: 8),
                         _buildSongInfo(context, playlist, currentItem),
@@ -1890,19 +1815,11 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                 return ListTile(
                   key: ValueKey('${song.name}_${song.bpm}_$index'),
                   title: Text(song.name),
-                  subtitle: Text(
-                    [
-                      [
-                        '${song.bpm} BPM',
-                        song.timeSignature,
-                        if (song.durationSeconds != null)
-                          formatDuration(song.durationSeconds!),
-                      ].join(' · '),
-                      if (song.notes.isNotEmpty) song.notes.split('\n').first,
-                    ].join('\n'),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  subtitle: Text([
+                    '${song.bpm} BPM',
+                    if (song.durationSeconds != null)
+                      formatDuration(song.durationSeconds!),
+                  ].join(' · ')),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1995,8 +1912,6 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
         text: currentSong?.durationSeconds == null
             ? ''
             : formatDuration(currentSong!.durationSeconds!));
-    final notesController = TextEditingController(text: currentSong?.notes ?? '');
-    var timeSignature = currentSong?.timeSignature ?? '4/4';
     String? durationError;
 
     showDialog(
@@ -2026,36 +1941,17 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: timeSignature,
-                          decoration: const InputDecoration(labelText: 'Time'),
-                          items: [
-                            for (final ts in timeSignatures)
-                              DropdownMenuItem(value: ts, child: Text(ts)),
-                          ],
-                          onChanged: (v) => timeSignature = v ?? timeSignature,
+                        child: TextField(
+                          decoration: InputDecoration(
+                            labelText: 'Length',
+                            hintText: 'm:ss, optional',
+                            errorText: durationError,
+                          ),
+                          keyboardType: TextInputType.datetime,
+                          controller: durationController,
                         ),
                       ),
                     ],
-                  ),
-                  TextField(
-                    decoration: InputDecoration(
-                      labelText: 'Length (optional)',
-                      hintText: 'm:ss',
-                      errorText: durationError,
-                    ),
-                    keyboardType: TextInputType.datetime,
-                    controller: durationController,
-                  ),
-                  TextField(
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
-                      hintText: 'Key, cues, who starts…',
-                    ),
-                    controller: notesController,
-                    minLines: 1,
-                    maxLines: 4,
-                    textCapitalization: TextCapitalization.sentences,
                   ),
                 ],
               ),
@@ -2077,20 +1973,15 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                       .clamp(30, 300);
                   var name = nameController.text.trim();
                   if (name.isEmpty) name = 'Unnamed Song';
-                  final notes = notesController.text.trim();
 
                   setState(() {
                     if (currentSong == null) {
-                      widget.playlist.items.add(SetlistItem(name, bpm,
-                          timeSignature: timeSignature,
-                          notes: notes,
-                          durationSeconds: duration));
+                      widget.playlist.items
+                          .add(SetlistItem(name, bpm, durationSeconds: duration));
                     } else {
                       currentSong
                         ..name = name
                         ..bpm = bpm
-                        ..timeSignature = timeSignature
-                        ..notes = notes
                         ..durationSeconds = duration;
                     }
                     widget.onChanged();

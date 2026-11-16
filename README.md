@@ -24,7 +24,7 @@ snaps, solo piano, strummed guitar or a lone bass line.
   dragging, when the band moves away from the song's tempo.
 - **Tempo history graph** — see if you're rushing or dragging over the course
   of a song.
-- **Setlists** with a BPM, time signature, length and notes per song, saved
+- **Setlists** with a BPM and optional length per song, saved
   on the device — jump to any song, see what's up next, and share or import
   setlists as plain text.
 - **Count-in metronome** that starts with each song and steps aside
@@ -67,13 +67,12 @@ go back, or change song (including with MIDI) to return to the setlist.
 ### The metronome and setlist (bottom half)
 
 - **The circle** pulses at the current song's BPM. **Tap it** to start or stop
-  the metronome (▶ / ■). The dots below it count the beats in the bar; beat 1
-  flashes brighter so count-ins are easy to follow.
+  the metronome (▶ / ■).
 - **−5 / −1 / +1 / +5** change the current song's BPM and save it.
 - **Capture** saves the tempo you're hearing as the song's BPM (the button
   shows the number it will save). A message confirms it, with **Undo**.
-- **Song info** shows *SONG n OF m*, the song's name, time signature, length,
-  notes and what's **up next**. **Tap it** to see the whole setlist (with its
+- **Song info** shows *SONG n OF m*, the song's name, its length (if set) and
+  what's **up next**. **Tap it** to see the whole setlist (with its
   total length) and jump to any song.
 - **⏮ / Next Song** move through the setlist and start the metronome for the
   new song. On the last song the button becomes **Restart Set**, which goes
@@ -92,12 +91,12 @@ yourself, it won't auto-pause until the next song.
 
 ### Setlists
 
-Open the ☰ menu to switch playlists, create a new one, or import one.
+Tap the **SCBeatWiz logo** (top left) to switch playlists, create a new one, or
+import one.
 Long-press and drag to reorder playlists. Each playlist's **⋮** menu has:
 
 - **Edit** — rename the playlist; add, edit, delete (with Undo) and drag to
-  reorder songs. Each song has a name, BPM, time signature, optional length
-  (m:ss) and optional notes (key, cues, who starts…).
+  reorder songs. Each song has a name, a BPM and an optional length (m:ss).
 - **Duplicate** — make a copy, e.g. to adapt a setlist for a different gig.
 - **Share** — send the setlist as text through any app (messages, email…).
 - **Delete** — asks first, then offers **Undo**.
@@ -108,15 +107,16 @@ Long-press and drag to reorder playlists. Each playlist's **⋮** menu has:
 
 ```
 # SCBeatWiz setlist: Friday Gig
-Superstition, 100, 4/4, 4:26 | Clav intro / horns on 2nd chorus
+Superstition, 100, 4:26
 Valerie, 118
 ```
 
-**Import Playlist** (in the ☰ menu) takes pasted text — a shared setlist or a
+**Import Playlist** (in the playlists menu) takes pasted text — a shared setlist or a
 list typed by hand. One song per line with its BPM is enough, and common
 styles work: `Superstition - 100`, `1. Valerie, 118 bpm`, `120 Song name`,
-optionally with a time signature (`3/4`), a length (`4:26`) and notes after
-` | `. A `# Setlist: Name` line names the playlist. The dialog shows how many
+optionally with a length (`4:26`). A `# Setlist: Name` line names the
+playlist; time signatures and notes after ` | ` (from older versions) are
+ignored. The dialog shows how many
 songs it found and how many lines it skipped before you import.
 
 ### MIDI

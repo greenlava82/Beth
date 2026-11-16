@@ -45,44 +45,30 @@ void main() {
   });
 
   group('song details', () {
-    test('default to 4/4, no notes, no duration', () {
-      final p = decodePlaylists(
-          '[{"name":"Old","items":[{"name":"A","bpm":100}]}]')!.single;
+    test('older saves with time signature and notes still load', () {
+      final p = decodePlaylists('[{"name":"Old","items":[{"name":"A","bpm":100,'
+          '"timeSignature":"3/4","notes":"Key of D","durationSeconds":245}]}]')!
+          .single;
       final song = p.items.single;
-      expect(song.timeSignature, '4/4');
-      expect(song.beatsPerBar, 4);
-      expect(song.notes, '');
-      expect(song.durationSeconds, isNull);
+      expect(song.name, 'A');
+      expect(song.bpm, 100);
+      expect(song.durationSeconds, 245);
+      // The dropped fields aren't written back.
+      expect(song.toJson().keys, unorderedEquals(['name', 'bpm', 'durationSeconds']));
     });
 
-    test('round-trip through JSON', () {
-      final song = SetlistItem('Waltz', 150,
-          timeSignature: '3/4', notes: 'Key of D\nPiano starts', durationSeconds: 245);
+    test('duration round-trips through JSON and is optional', () {
       final back = decodePlaylists(encodePlaylists([
-        Playlist('P', [song])
-      ]))!.single.items.single;
-      expect(back.timeSignature, '3/4');
-      expect(back.beatsPerBar, 3);
-      expect(back.notes, 'Key of D\nPiano starts');
-      expect(back.durationSeconds, 245);
+        Playlist('P', [SetlistItem('A', 150, durationSeconds: 245), SetlistItem('B', 90)])
+      ]))!.single.items;
+      expect(back[0].durationSeconds, 245);
+      expect(back[1].durationSeconds, isNull);
+      expect(back[1].toJson().containsKey('durationSeconds'), isFalse);
     });
 
-    test('unknown time signature falls back to 4/4', () {
-      final song = SetlistItem.fromJson(
-          {'name': 'X', 'bpm': 90, 'timeSignature': '11/3'});
-      expect(song.timeSignature, '4/4');
-    });
-
-    test('beatsPerBar follows the top number', () {
-      expect(SetlistItem('a', 1, timeSignature: '6/8').beatsPerBar, 6);
-      expect(SetlistItem('a', 1, timeSignature: '12/8').beatsPerBar, 12);
-    });
-
-    test('copy keeps details', () {
-      final a = SetlistItem('a', 90,
-          timeSignature: '7/8', notes: 'n', durationSeconds: 60);
-      final b = a.copy();
-      expect([b.timeSignature, b.notes, b.durationSeconds], ['7/8', 'n', 60]);
+    test('copy keeps the duration', () {
+      final b = SetlistItem('a', 90, durationSeconds: 60).copy();
+      expect([b.name, b.bpm, b.durationSeconds], ['a', 90, 60]);
     });
   });
 

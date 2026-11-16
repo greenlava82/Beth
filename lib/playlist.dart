@@ -1,58 +1,29 @@
 import 'dart:convert';
 
-/// Time signatures offered in the song editor.
-const List<String> timeSignatures = [
-  '2/4', '3/4', '4/4', '5/4', '6/8', '7/8', '9/8', '12/8', //
-];
-
 /// One song in a setlist.
 class SetlistItem {
   String name;
   int bpm;
 
-  /// e.g. "4/4"; the metronome accents the first of [beatsPerBar] beats.
-  String timeSignature;
-
-  /// Free-form notes: key, cues, who starts…
-  String notes;
-
   /// Expected length, if known.
   int? durationSeconds;
 
-  SetlistItem(
-    this.name,
-    this.bpm, {
-    this.timeSignature = '4/4',
-    this.notes = '',
-    this.durationSeconds,
-  });
+  SetlistItem(this.name, this.bpm, {this.durationSeconds});
 
-  /// Beats in one bar (the time signature's top number).
-  int get beatsPerBar {
-    final n = int.tryParse(timeSignature.split('/').first);
-    return (n == null || n < 1) ? 4 : n;
-  }
-
-  SetlistItem copy() => SetlistItem(name, bpm,
-      timeSignature: timeSignature,
-      notes: notes,
-      durationSeconds: durationSeconds);
+  SetlistItem copy() => SetlistItem(name, bpm, durationSeconds: durationSeconds);
 
   Map<String, dynamic> toJson() => {
         'name': name,
         'bpm': bpm,
-        'timeSignature': timeSignature,
-        if (notes.isNotEmpty) 'notes': notes,
         if (durationSeconds != null) 'durationSeconds': durationSeconds,
       };
 
+  /// Reads a song. Older saves may also carry 'timeSignature' and 'notes'
+  /// (no longer used); they're ignored.
   factory SetlistItem.fromJson(Map<String, dynamic> json) {
-    final ts = json['timeSignature'] as String?;
     return SetlistItem(
       (json['name'] as String?) ?? 'Unnamed Song',
       (json['bpm'] as num?)?.round() ?? 120,
-      timeSignature: (ts != null && timeSignatures.contains(ts)) ? ts : '4/4',
-      notes: (json['notes'] as String?) ?? '',
       durationSeconds: (json['durationSeconds'] as num?)?.round(),
     );
   }
