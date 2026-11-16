@@ -197,14 +197,38 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     
     setState(() {
       _isLoadingPlaylists = false;
+      _updateMetronomeTempo();
     });
-    _updateMetronomeTempo();
   }
 
   Future<void> _savePlaylists() async {
     final prefs = await SharedPreferences.getInstance();
     final String encodedList = jsonEncode(_playlists.map((p) => p.toJson()).toList());
     await prefs.setString('playlists', encodedList);
+  }
+
+  /// Slide the preferred range so it is centred (on a log scale, i.e. by
+  /// ratio) on [targetBpm], keeping the width the user chose. 90–160 is
+  /// centred on 120; for an 80 BPM song the same width gives 60–105.
+  /// Doesn't call setState — callers rebuild.
+  void _centerPreferredRangeOn(double targetBpm) {
+    const step = 5.0;
+    double snap(double v) => (v / step).round() * step;
+    final ratio = math.max(_preferredRange.end / _preferredRange.start, 1.1);
+    final halfRatio = math.sqrt(ratio);
+    var lo = snap(targetBpm / halfRatio);
+    var hi = snap(targetBpm * halfRatio);
+    // Keep within the slider's limits, preserving the width where possible.
+    if (lo < _rangeLimitMin) {
+      lo = _rangeLimitMin;
+      hi = math.min(_rangeLimitMax, snap(lo * ratio));
+    } else if (hi > _rangeLimitMax) {
+      hi = _rangeLimitMax;
+      lo = math.max(_rangeLimitMin, snap(hi / ratio));
+    }
+    if (hi - lo < 10) hi = math.min(_rangeLimitMax, lo + 10);
+    _preferredRange = RangeValues(lo, hi);
+    _tempoDetector.setPreferredRange(lo, hi);
   }
 
   void _setPreferredRange(RangeValues values) {
@@ -291,6 +315,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
     final targetBpm = playlist.items[_currentSetlistIndex].bpm;
     _tempoDetector.expectedBpm = targetBpm.toDouble();
+    _centerPreferredRangeOn(targetBpm.toDouble());
     final msPerBeat = (60000 / targetBpm).round();
     _metronomeController.duration = Duration(milliseconds: msPerBeat);
     if (_isMetronomePlaying) {
@@ -445,8 +470,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                               builder: (_) => PlaylistEditScreen(
                                 playlist: playlist,
                                 onChanged: () {
-                                  setState(() {});
-                                  _updateMetronomeTempo();
+                                  setState(_updateMetronomeTempo);
                                   _savePlaylists();
                                 },
                               ),
