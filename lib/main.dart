@@ -1,17 +1,19 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'playlist.dart';
+import 'playlist_text.dart';
 import 'tempo_detector.dart';
 import 'tempo_lock.dart';
 
@@ -701,6 +703,116 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     });
   }
 
+  Future<void> _sharePlaylist(Playlist playlist) async {
+    await SharePlus.instance.share(ShareParams(
+      text: playlistToText(playlist),
+      subject: '${playlist.name} (SCBeatWiz setlist)',
+    ));
+  }
+
+  /// [base], or "[base] (2)", "(3)"… if a playlist already has that name.
+  String _uniquePlaylistName(String base) {
+    final names = _playlists.map((p) => p.name).toSet();
+    if (!names.contains(base)) return base;
+    for (var n = 2;; n++) {
+      final candidate = '$base ($n)';
+      if (!names.contains(candidate)) return candidate;
+    }
+  }
+
+  Future<void> _showImportDialog() async {
+    final controller = TextEditingController();
+    var preview = parsePlaylistText('');
+    final result = await showDialog<PlaylistImport>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          void update() =>
+              setDialogState(() => preview = parsePlaylistText(controller.text));
+          final songs = preview.songCount;
+          final skipped = preview.skippedLines.length;
+          return AlertDialog(
+            title: const Text('Import Playlist'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Paste a setlist shared from SCBeatWiz, or one song per '
+                    'line like "Superstition, 100".',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: controller,
+                    minLines: 4,
+                    maxLines: 10,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: '# Setlist: Friday Gig\nSuperstition, 100\nValerie, 118',
+                    ),
+                    onChanged: (_) => update(),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.content_paste),
+                      label: const Text('Paste'),
+                      onPressed: () async {
+                        final data = await Clipboard.getData(Clipboard.kTextPlain);
+                        if (data?.text == null) return;
+                        controller.text = data!.text!;
+                        update();
+                      },
+                    ),
+                  ),
+                  Text(
+                    songs == 0
+                        ? (controller.text.trim().isEmpty ? '' : 'No songs found')
+                        : 'Found $songs song${songs == 1 ? '' : 's'}'
+                            '${preview.playlists.length > 1 ? ' in ${preview.playlists.length} playlists' : ''}'
+                            '${skipped > 0 ? ' · $skipped line${skipped == 1 ? '' : 's'} skipped' : ''}',
+                    style: TextStyle(
+                        color: songs == 0 ? Colors.redAccent : Colors.grey[300]),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: songs == 0 ? null : () => Navigator.pop(context, preview),
+                child: const Text('Import'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (result == null || result.playlists.isEmpty || !mounted) return;
+
+    final first = _playlists.length;
+    setState(() {
+      for (final p in result.playlists) {
+        p.name = _uniquePlaylistName(p.name);
+        _playlists.add(p);
+      }
+      // Switch to the (first) imported playlist.
+      _currentPlaylistIndex = first;
+      _currentSetlistIndex = 0;
+      _updateMetronomeTempo();
+    });
+    _savePlaylists();
+    final skipped = result.skippedLines.length;
+    _showSnack('Imported "${_playlists[first].name}" '
+        '(${result.songCount} songs'
+        '${skipped > 0 ? ', $skipped line${skipped == 1 ? '' : 's'} skipped' : ''})');
+  }
+
   void _showSnack(String message, {VoidCallback? undo}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -752,6 +864,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                           _openPlaylistEditor(playlist);
                         case 'duplicate':
                           _duplicatePlaylist(index);
+                        case 'share':
+                          _sharePlaylist(playlist);
                         case 'delete':
                           _confirmDeletePlaylist(index);
                       }
@@ -764,6 +878,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       const PopupMenuItem(
                         value: 'duplicate',
                         child: ListTile(leading: Icon(Icons.copy), title: Text('Duplicate')),
+                      ),
+                      const PopupMenuItem(
+                        value: 'share',
+                        child: ListTile(leading: Icon(Icons.share), title: Text('Share')),
                       ),
                       // Keep at least one playlist.
                       if (_playlists.length > 1)
@@ -787,6 +905,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             onTap: () {
               Navigator.pop(context); // close drawer
               _showAddPlaylistDialog();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.content_paste),
+            title: const Text('Import Playlist'),
+            onTap: () {
+              Navigator.pop(context); // close drawer
+              _showImportDialog();
             },
           ),
           const SizedBox(height: 24),
