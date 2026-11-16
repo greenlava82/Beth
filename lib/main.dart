@@ -835,99 +835,104 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   Widget _buildDrawer() {
     return Drawer(
-      child: Column(
-        children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.teal),
-            child: Center(
-              child: Text('Playlists', style: TextStyle(color: Colors.white, fontSize: 24)),
+      // Keep the bottom items (e.g. Import Playlist) clear of the system
+      // navigation bar; the header still fills in under the status bar.
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Colors.teal),
+              child: Center(
+                child: Text('Playlists', style: TextStyle(color: Colors.white, fontSize: 24)),
+              ),
             ),
-          ),
-          Expanded(
-            // Long-press and drag to reorder.
-            child: ReorderableListView.builder(
-              itemCount: _playlists.length,
-              onReorder: _reorderPlaylists,
-              itemBuilder: (context, index) {
-                final playlist = _playlists[index];
-                final total = playlistDuration(playlist);
-                return ListTile(
-                  key: ObjectKey(playlist),
-                  title: Text(playlist.name),
-                  subtitle: Text([
-                    '${playlist.items.length} songs',
-                    if (total.known > 0) formatDuration(total.seconds),
-                  ].join(' · ')),
-                  selected: _currentPlaylistIndex == index,
-                  onTap: () {
-                    setState(() {
-                      _currentPlaylistIndex = index;
-                      _currentSetlistIndex = 0;
-                      _updateMetronomeTempo();
-                    });
-                    Navigator.pop(context);
-                  },
-                  trailing: PopupMenuButton<String>(
-                    tooltip: 'Playlist actions',
-                    onSelected: (action) {
-                      switch (action) {
-                        case 'edit':
-                          _openPlaylistEditor(playlist);
-                        case 'duplicate':
-                          _duplicatePlaylist(index);
-                        case 'share':
-                          _sharePlaylist(playlist);
-                        case 'delete':
-                          _confirmDeletePlaylist(index);
-                      }
+            Expanded(
+              // Long-press and drag to reorder.
+              child: ReorderableListView.builder(
+                itemCount: _playlists.length,
+                onReorder: _reorderPlaylists,
+                itemBuilder: (context, index) {
+                  final playlist = _playlists[index];
+                  final total = playlistDuration(playlist);
+                  return ListTile(
+                    key: ObjectKey(playlist),
+                    title: Text(playlist.name),
+                    subtitle: Text([
+                      '${playlist.items.length} songs',
+                      if (total.known > 0) formatDuration(total.seconds),
+                    ].join(' · ')),
+                    selected: _currentPlaylistIndex == index,
+                    onTap: () {
+                      setState(() {
+                        _currentPlaylistIndex = index;
+                        _currentSetlistIndex = 0;
+                        _updateMetronomeTempo();
+                      });
+                      Navigator.pop(context);
                     },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: ListTile(leading: Icon(Icons.edit), title: Text('Edit')),
-                      ),
-                      const PopupMenuItem(
-                        value: 'duplicate',
-                        child: ListTile(leading: Icon(Icons.copy), title: Text('Duplicate')),
-                      ),
-                      const PopupMenuItem(
-                        value: 'share',
-                        child: ListTile(leading: Icon(Icons.share), title: Text('Share')),
-                      ),
-                      // Keep at least one playlist.
-                      if (_playlists.length > 1)
+                    trailing: PopupMenuButton<String>(
+                      tooltip: 'Playlist actions',
+                      onSelected: (action) {
+                        switch (action) {
+                          case 'edit':
+                            _openPlaylistEditor(playlist);
+                          case 'duplicate':
+                            _duplicatePlaylist(index);
+                          case 'share':
+                            _sharePlaylist(playlist);
+                          case 'delete':
+                            _confirmDeletePlaylist(index);
+                        }
+                      },
+                      itemBuilder: (context) => [
                         const PopupMenuItem(
-                          value: 'delete',
-                          child: ListTile(
-                            leading: Icon(Icons.delete, color: Colors.redAccent),
-                            title: Text('Delete'),
-                          ),
+                          value: 'edit',
+                          child: ListTile(leading: Icon(Icons.edit), title: Text('Edit')),
                         ),
-                    ],
-                  ),
-                );
+                        const PopupMenuItem(
+                          value: 'duplicate',
+                          child: ListTile(leading: Icon(Icons.copy), title: Text('Duplicate')),
+                        ),
+                        const PopupMenuItem(
+                          value: 'share',
+                          child: ListTile(leading: Icon(Icons.share), title: Text('Share')),
+                        ),
+                        // Keep at least one playlist.
+                        if (_playlists.length > 1)
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: ListTile(
+                              leading: Icon(Icons.delete, color: Colors.redAccent),
+                              title: Text('Delete'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('New Playlist'),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _showAddPlaylistDialog();
               },
             ),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.add),
-            title: const Text('New Playlist'),
-            onTap: () {
-              Navigator.pop(context); // close drawer
-              _showAddPlaylistDialog();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.content_paste),
-            title: const Text('Import Playlist'),
-            onTap: () {
-              Navigator.pop(context); // close drawer
-              _showImportDialog();
-            },
-          ),
-          const SizedBox(height: 24),
-        ],
+            ListTile(
+              leading: const Icon(Icons.content_paste),
+              title: const Text('Import Playlist'),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _showImportDialog();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
