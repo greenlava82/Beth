@@ -1128,9 +1128,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         ]),
         rangeAnnotations: RangeAnnotations(
           horizontalRangeAnnotations: [
+            // fl_chart doesn't clip range annotations to the plot, so clamp
+            // the band to the visible BPM range or it spills over the slider
+            // and the controls when the preferred range is wider.
             HorizontalRangeAnnotation(
-              y1: _preferredRange.start,
-              y2: _preferredRange.end,
+              y1: _preferredRange.start.clamp(minY, maxY),
+              y2: _preferredRange.end.clamp(minY, maxY),
               color: colors.primary.withAlpha(25),
             ),
           ],
