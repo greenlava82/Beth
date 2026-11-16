@@ -525,10 +525,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     style: TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[400]),
                   ),
-                  TextSpan(
-                    text: '  ${(_detectionConfidence * 100).round()}%',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                  ),
                 ]),
                 style: const TextStyle(color: Colors.white, shadows: shadow),
               )
@@ -543,6 +539,49 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       shadows: shadow),
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildConfidenceIndicator(BuildContext context) {
+    // Thresholds match what the detector reports in practice: a solid
+    // drum groove is ~0.9, sparse piano ~0.3, noise < 0.1.
+    final hasEstimate = _isRecording && _tempoDetector.current != null;
+    final c = _detectionConfidence;
+    final (Color color, String label) = !hasEstimate
+        ? (Colors.grey, 'No beat')
+        : c >= 0.4
+            ? (Colors.greenAccent, 'Strong')
+            : c >= 0.2
+                ? (Colors.amber, 'Fair')
+                : (Colors.redAccent, 'Weak');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withAlpha(170),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                if (hasEstimate) BoxShadow(color: color.withAlpha(160), blurRadius: 6),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            hasEstimate ? '$label  ${(c * 100).round()}%' : label,
+            style: TextStyle(color: Colors.grey[300], fontSize: 11),
+          ),
+        ],
       ),
     );
   }
@@ -631,6 +670,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                           left: 40, // clear of the left axis labels
                           right: 0,
                           child: IgnorePointer(child: _buildTempoReadout(context)),
+                        ),
+                        // Confidence light along the bottom of the plot.
+                        Positioned(
+                          bottom: 8,
+                          left: 40,
+                          right: 0,
+                          child: IgnorePointer(
+                            child: Center(child: _buildConfidenceIndicator(context)),
+                          ),
                         ),
                       ],
                     ),
