@@ -21,9 +21,10 @@ maintained.
 
 - `lib/main.dart` — the whole UI and app state (`MetronomeScreen`): setlists,
   metronome, tempo graph, mic handling, MIDI trigger, persistence.
-- `lib/playlist.dart` — `Playlist` / `SetlistItem` (name, BPM, time
-  signature, notes, optional duration), JSON encode/decode (tolerant of old
-  or partial data), duration helpers. Pure Dart.
+- `lib/playlist.dart` — `Playlist` / `SetlistItem` (name, BPM, optional
+  duration), JSON encode/decode (tolerant of old or partial data — older saves
+  may still contain `timeSignature`/`notes`, which are ignored), duration
+  helpers. Pure Dart.
 - `lib/playlist_text.dart` — plain-text setlist export (`playlistToText`) and
   lenient import (`parsePlaylistText`, also accepts the app's JSON). Pure Dart.
 - `lib/tempo_detector.dart` — `TempoDetector`, pure Dart, no Flutter imports.
@@ -49,8 +50,8 @@ Persisted in `SharedPreferences`: `playlists` (JSON), `preferredMinBpm`,
 Changing their shape needs a migration or a tolerant loader; new song fields
 must default sensibly in `SetlistItem.fromJson` (see `playlist_test.dart`).
 
-All song changes go through `_goToSong()` (starts the count-in metronome on
-beat 1, resets the detector, arms `TempoLock`, leaves free-running mode);
+All song changes go through `_goToSong()` (starts the count-in metronome,
+resets the detector, arms `TempoLock`, leaves free-running mode);
 playlist list changes go through `_changePlaylists()` (keeps the current
 playlist selected). `_setFreeRunning()` toggles free-running mode (no target:
 detector hint 120 BPM, preferred range 80–160, graph-only layout);
