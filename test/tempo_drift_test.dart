@@ -62,4 +62,19 @@ void main() {
     expect(t.update(123.5, 120)!.level, DriftLevel.drifting); // fresh, not "off"
     expect(t.update(120, 0), isNull);
   });
+
+  test('weak readings are not judged', () {
+    final t = TempoDriftTracker();
+    expect(t.update(120, 120, confidence: 0.13), isNull);
+    expect(t.update(152, 160, confidence: 0.14), isNull);
+    expect(t.update(120, 120, confidence: 0.2)!.level, DriftLevel.onTempo);
+  });
+
+  test('a weak reading resets the hysteresis', () {
+    final t = TempoDriftTracker();
+    expect(t.update(130, 120, confidence: 0.9)!.level, DriftLevel.off);
+    expect(t.update(130, 120, confidence: 0.05), isNull);
+    // Fresh start: 3.3% enters "drifting", not the previous "off".
+    expect(t.update(124, 120, confidence: 0.9)!.level, DriftLevel.drifting);
+  });
 }

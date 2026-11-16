@@ -52,7 +52,13 @@ class TempoDriftTracker {
     this.onTempoPercent = 2,
     this.offPercent = 5,
     this.hysteresisPercent = 1,
+    this.minConfidence = 0.2,
   });
+
+  /// Readings below this detector confidence aren't judged: the detector
+  /// leans toward the song's BPM, so faint noise can land near the target
+  /// and would otherwise look like "on tempo" or "drifting".
+  final double minConfidence;
 
   final double onTempoPercent;
   final double offPercent;
@@ -63,9 +69,10 @@ class TempoDriftTracker {
   /// Forget the previous level (e.g. on a new song).
   void reset() => _level = DriftLevel.onTempo;
 
-  /// Returns null when there's nothing to compare (no reading or no target).
-  TempoDrift? update(double heardBpm, double targetBpm) {
-    if (heardBpm <= 0 || targetBpm <= 0) {
+  /// Returns null when there's nothing to compare: no reading, no target, or
+  /// a reading less confident than [minConfidence].
+  TempoDrift? update(double heardBpm, double targetBpm, {double confidence = 1}) {
+    if (heardBpm <= 0 || targetBpm <= 0 || confidence < minConfidence) {
       reset();
       return null;
     }

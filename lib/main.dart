@@ -595,7 +595,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _drift = playlist.items.isEmpty
           ? null
           : _driftTracker.update(_currentCalculatedBpm,
-              playlist.items[_currentSetlistIndex].bpm.toDouble());
+              playlist.items[_currentSetlistIndex].bpm.toDouble(),
+              confidence: _detectionConfidence);
     });
 
     if (_isMetronomePlaying && _tempoLock.update(now, DateTime.now())) {
