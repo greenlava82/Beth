@@ -394,20 +394,119 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     });
   }
 
-  void _advanceSetlist() {
+  /// Move to song [index] of the current playlist and start its count-in:
+  /// the metronome starts on beat 1, the detector listens afresh, and the
+  /// metronome pauses once the band locks onto the song's marking.
+  void _goToSong(int index) {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return;
     setState(() {
-      final playlist = _playlists[_currentPlaylistIndex];
-      if (playlist.items.isNotEmpty) {
-        _currentSetlistIndex = (_currentSetlistIndex + 1) % playlist.items.length;
-        _isMetronomePlaying = true; // Auto-play on next song
-        _updateMetronomeTempo();
-        // Listen fresh for the new song, and pause the metronome once the
-        // band locks onto its marking.
-        _tempoDetector.reset();
-        _currentCalculatedBpm = 0;
-        _tempoLock.arm(playlist.items[_currentSetlistIndex].bpm.toDouble());
-      }
+      _currentSetlistIndex = index.clamp(0, playlist.items.length - 1);
+      _isMetronomePlaying = true;
+      _metronomeController.reset();
+      _beatIndex = 0;
+      _lastPulseValue = 0;
+      _updateMetronomeTempo();
+      _tempoDetector.reset();
+      _currentCalculatedBpm = 0;
+      _tempoLock.arm(playlist.items[_currentSetlistIndex].bpm.toDouble());
     });
+  }
+
+  bool get _isLastSong {
+    final playlist = _playlists[_currentPlaylistIndex];
+    return _currentSetlistIndex >= playlist.items.length - 1;
+  }
+
+  /// Next song; from the last song, go back to the top of the set (and say
+  /// so) rather than wrapping silently.
+  void _advanceSetlist() {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return;
+    if (_isLastSong) {
+      _goToSong(0);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('Back to the top of "${playlist.name}"'),
+          duration: const Duration(seconds: 2),
+        ));
+    } else {
+      _goToSong(_currentSetlistIndex + 1);
+    }
+  }
+
+  void _previousSong() {
+    if (_currentSetlistIndex > 0) _goToSong(_currentSetlistIndex - 1);
+  }
+
+  /// Bottom sheet listing the whole setlist; tap a song to jump to it.
+  void _showSetlistSheet() {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return;
+    final total = playlistDuration(playlist);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final colors = Theme.of(context).colorScheme;
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          builder: (context, scroll) => Column(
+            children: [
+              ListTile(
+                title: Text(playlist.name,
+                    style: Theme.of(context).textTheme.titleLarge),
+                subtitle: Text([
+                  '${playlist.items.length} songs',
+                  if (total.known > 0)
+                    '${formatDuration(total.seconds)}'
+                        '${total.known < playlist.items.length ? ' (${total.known} timed)' : ''}',
+                ].join(' · ')),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  controller: scroll,
+                  itemCount: playlist.items.length,
+                  itemBuilder: (context, i) {
+                    final song = playlist.items[i];
+                    final isCurrent = i == _currentSetlistIndex;
+                    return ListTile(
+                      selected: isCurrent,
+                      leading: CircleAvatar(
+                        radius: 16,
+                        backgroundColor: isCurrent
+                            ? colors.primary
+                            : colors.surfaceContainerHighest,
+                        foregroundColor:
+                            isCurrent ? colors.onPrimary : colors.onSurface,
+                        child: Text('${i + 1}'),
+                      ),
+                      title: Text(song.name),
+                      subtitle: Text([
+                        '${song.bpm} BPM',
+                        song.timeSignature,
+                        if (song.durationSeconds != null)
+                          formatDuration(song.durationSeconds!),
+                      ].join(' · ')),
+                      trailing: isCurrent ? const Text('NOW') : null,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _goToSong(i);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _setupMidi() async {
@@ -1064,63 +1163,111 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
                     const SizedBox(height: 24),
                     
-                    // Setlist Info
-                    Text(
-                      'CURRENT',
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        letterSpacing: 2,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      currentItem.name,
-                      style: Theme.of(context).textTheme.headlineSmall,
-                      textAlign: TextAlign.center,
-                    ),
-                    if (playlist.items.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        [
-                          currentItem.timeSignature,
-                          if (currentItem.durationSeconds != null)
-                            formatDuration(currentItem.durationSeconds!),
-                        ].join('  ·  '),
-                        style: TextStyle(color: Colors.grey[400], fontSize: 13),
-                      ),
-                      if (currentItem.notes.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          currentItem.notes,
-                          textAlign: TextAlign.center,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.grey[300],
-                            fontStyle: FontStyle.italic,
-                          ),
+                    // Setlist Info — tap to see and jump around the setlist
+                    InkWell(
+                      onTap: playlist.items.isEmpty ? null : _showSetlistSheet,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  playlist.items.isEmpty
+                                      ? 'CURRENT'
+                                      : 'SONG ${_currentSetlistIndex + 1} OF ${playlist.items.length}',
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    letterSpacing: 2,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                if (playlist.items.isNotEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Icon(Icons.queue_music, size: 16, color: Colors.grey[400]),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              currentItem.name,
+                              style: Theme.of(context).textTheme.headlineSmall,
+                              textAlign: TextAlign.center,
+                            ),
+                            if (playlist.items.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                [
+                                  currentItem.timeSignature,
+                                  if (currentItem.durationSeconds != null)
+                                    formatDuration(currentItem.durationSeconds!),
+                                ].join('  ·  '),
+                                style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                              ),
+                              if (currentItem.notes.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  currentItem.notes,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.grey[300],
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 10),
+                              Text(
+                                _isLastSong
+                                    ? 'Last song of the set'
+                                    : 'Up next: ${playlist.items[_currentSetlistIndex + 1].name}'
+                                        ' · ${playlist.items[_currentSetlistIndex + 1].bpm}',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
-                    ],
+                      ),
+                    ),
                     
                     const SizedBox(height: 32),
                     
                     // Controls
-                    ElevatedButton.icon(
-                      onPressed: playlist.items.isEmpty ? null : _advanceSetlist,
-                      icon: const Icon(Icons.skip_next, size: 32),
-                      label: const Text(
-                        'NEXT SONG',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: 'Previous song',
+                          iconSize: 32,
+                          onPressed: playlist.items.isEmpty || _currentSetlistIndex == 0
+                              ? null
+                              : _previousSong,
+                          icon: const Icon(Icons.skip_previous),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          onPressed: playlist.items.isEmpty ? null : _advanceSetlist,
+                          icon: Icon(
+                              _isLastSong ? Icons.replay : Icons.skip_next,
+                              size: 32),
+                          label: Text(
+                            _isLastSong ? 'RESTART SET' : 'NEXT SONG',
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     Text(
