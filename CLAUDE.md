@@ -1,9 +1,21 @@
-# bpm_metronome (SCBeatWiz)
+# SCBeatWiz (SC Beat Wizard)
 
 Flutter app for live musicians: a setlist-driven visual metronome that listens
 through the mic and detects the band's tempo in real time. Primary target is
 Android (tested on a Pixel); the other Flutter platforms are scaffolded but not
 maintained.
+
+## Naming
+
+- **SCBeatWiz** — short name: Android launcher label, iOS `CFBundleName`, web
+  `short_name`, macOS bundle, Dart package (`scbeatwiz`), root widget
+  (`SCBeatWizApp`), repo.
+- **SC Beat Wizard** — full name: app/window titles, iOS display name, web
+  title and descriptions.
+- Never "BPM Metronome" or `bpm_metronome` in anything user-facing.
+- The app IDs are deliberately still `com.example.bpm_metronome` (Android) and
+  `com.example.bpmMetronome` (iOS/macOS); changing them makes a new app that
+  loses existing installs' saved setlists. Don't change them without asking.
 
 ## Layout
 
