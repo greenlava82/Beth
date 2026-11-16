@@ -41,7 +41,7 @@ On first launch, allow microphone access. The app starts listening right away
 | Element | What it shows |
 |---|---|
 | **Big number** | The tempo being heard right now. Shows *Listening…* when there isn't a clear beat, *Mic off* when the mic is off. |
-| **Drift colour** | The number turns 🟢 green when you're on the song's tempo (within 2%), 🟡 amber when drifting (2–5%) and 🔴 red when off (more than 5%). Under it, ✓ *on tempo* or an arrow with how far off you are — ▲ *+3.1 rushing* / ▼ *−2.0 dragging*. |
+| **Drift colour** | The number turns 🟢 green when you're on the song's tempo (within 2%), 🟡 amber when drifting (2–5%) and 🔴 red when off (more than 5%). Under it, ✓ *on tempo* or an arrow with how far off you are — ▲ *+3.1 rushing* / ▼ *−2.0 dragging*. Weak readings (below *Fair* confidence) stay white, since they may just be noise. |
 | **Confidence light** | 🟢 *Strong* — trust it. 🟡 *Fair* — probably right (typical for sparse piano or guitar). 🔴 *Weak* — just noise or no steady pulse. ⚪ *No beat* — silence or mic off. |
 | **Graph** | Detected tempo over time, with a dashed **target** line at the song's BPM. The time axis counts back from **now** (e.g. 4:00 · 3:00 · 2:00 · 1:00 · now) and both axes zoom to fit the readings. |
 | **🕘 chip** | How long readings stay on the graph (1–10 min, default 4 — about one song). Tap to change. |
