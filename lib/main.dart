@@ -10,6 +10,7 @@ import 'package:flutter_midi_command/flutter_midi_command.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'tempo_detector.dart';
 
@@ -347,6 +348,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
       _tempoDetector.reset();
       setState(() => _isRecording = true);
+      // Keep the screen on while listening (released when the mic is
+      // turned off; the OS also drops it when the app leaves the screen).
+      WakelockPlus.enable();
 
       _audioStreamSub = stream.listen((Uint8List data) {
         _processAudioBuffer(data);
@@ -375,6 +379,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     _audioRecorder.dispose();
     _midiSub?.cancel();
     _metronomeController.dispose();
+    WakelockPlus.disable();
     super.dispose();
   }
 
@@ -767,6 +772,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               if (_isRecording) {
                 _audioStreamSub?.cancel();
                 _audioRecorder.stop();
+                WakelockPlus.disable();
                 setState(() {
                   _isRecording = false;
                   _currentCalculatedBpm = 0;
