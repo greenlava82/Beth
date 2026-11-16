@@ -1,5 +1,5 @@
 name: bpm_metronome
-description: "A new Flutter project."
+description: "SC Beat Wizard: a setlist metronome that listens and shows your band's live tempo."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

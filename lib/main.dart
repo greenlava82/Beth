@@ -25,7 +25,7 @@ class BpmMetronomeApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'BPM Metronome',
+      title: 'SC Beat Wizard',
       theme: ThemeData(
         brightness: Brightness.dark,
         primarySwatch: Colors.teal,
