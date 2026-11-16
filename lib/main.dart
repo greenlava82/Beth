@@ -1318,7 +1318,18 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Metronome - ${playlist.name}'),
+        // The SCBeatWiz mark opens the playlists drawer (in place of the
+        // usual hamburger icon); the title is the current playlist.
+        leading: Builder(
+          builder: (context) => IconButton(
+            tooltip: 'Playlists',
+            onPressed: () => Scaffold.of(context).openDrawer(),
+            // The image has padding around the mark; 40 makes the mark itself
+            // about the size of a regular toolbar icon.
+            icon: Image.asset('assets/branding/splash.png', height: 40),
+          ),
+        ),
+        title: Text(playlist.name, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
             icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),

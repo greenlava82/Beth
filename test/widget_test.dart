@@ -13,7 +13,9 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     // Verify that our title is present.
-    expect(find.text('Metronome - Default Setlist'), findsOneWidget);
+    expect(find.text('Default Setlist'), findsOneWidget);
+    // The logo is the button that opens the playlists drawer.
+    expect(find.byTooltip('Playlists'), findsOneWidget);
     
     // Verify that the first setlist item is present.
     expect(find.text('Song 1 (Slow)'), findsOneWidget);
