@@ -1,17 +1,19 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'playlist.dart';
+import 'playlist_text.dart';
 import 'tempo_detector.dart';
 import 'tempo_lock.dart';
 
@@ -36,46 +38,6 @@ class SCBeatWizApp extends StatelessWidget {
   }
 }
 
-class SetlistItem {
-  String name;
-  int bpm;
-
-  SetlistItem(this.name, this.bpm);
-
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'bpm': bpm,
-      };
-
-  factory SetlistItem.fromJson(Map<String, dynamic> json) {
-    return SetlistItem(
-      json['name'] as String,
-      json['bpm'] as int,
-    );
-  }
-}
-
-class Playlist {
-  String name;
-  List<SetlistItem> items;
-
-  Playlist(this.name, this.items);
-
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'items': items.map((item) => item.toJson()).toList(),
-      };
-
-  factory Playlist.fromJson(Map<String, dynamic> json) {
-    return Playlist(
-      json['name'] as String,
-      (json['items'] as List<dynamic>)
-          .map((item) => SetlistItem.fromJson(item as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-}
-
 class MetronomeScreen extends StatefulWidget {
   const MetronomeScreen({super.key});
 
@@ -86,14 +48,7 @@ class MetronomeScreen extends StatefulWidget {
 class _MetronomeScreenState extends State<MetronomeScreen>
     with SingleTickerProviderStateMixin {
   // Playlist State
-  List<Playlist> _playlists = [
-    Playlist('Default Setlist', [
-      SetlistItem('Song 1 (Slow)', 80),
-      SetlistItem('Song 2 (Upbeat)', 120),
-      SetlistItem('Song 3 (Fast)', 160),
-      SetlistItem('Song 4 (Groove)', 105),
-    ]),
-  ];
+  List<Playlist> _playlists = defaultPlaylists();
   int _currentPlaylistIndex = 0;
   int _currentSetlistIndex = 0;
   bool _isLoadingPlaylists = true;
@@ -101,6 +56,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Visual Metronome
   late AnimationController _metronomeController;
   late Animation<double> _pulseAnimation;
+  // Which beat of the bar the metronome is on (0 = downbeat).
+  int _beatIndex = 0;
+  double _lastPulseValue = 0;
   bool _isMetronomePlaying = false;
 
   // Audio Recording & BPM Detection
@@ -181,19 +139,21 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       ));
     }
     
-    if (playlistsJson != null) {
-      try {
-        final List<dynamic> decodedList = jsonDecode(playlistsJson);
-        setState(() {
-          _playlists = decodedList
-              .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
-              .toList();
-        });
-      } catch (e) {
-        // If decoding fails, fallback to default
-        debugPrint("Error loading playlists: \$e");
-      }
+    final saved = decodePlaylists(playlistsJson);
+    if (saved != null) {
+      setState(() => _playlists = saved);
+    } else if (playlistsJson != null) {
+      // Unreadable data: keep the defaults rather than crash.
+      debugPrint('Could not read saved playlists; using defaults');
     }
+
+    // Pick up where we left off (e.g. after the app was killed mid-set).
+    final savedPlaylist = prefs.getInt('currentPlaylist') ?? 0;
+    _currentPlaylistIndex = savedPlaylist.clamp(0, _playlists.length - 1);
+    final songCount = _playlists[_currentPlaylistIndex].items.length;
+    _currentSetlistIndex = songCount == 0
+        ? 0
+        : (prefs.getInt('currentSong') ?? 0).clamp(0, songCount - 1);
     
     setState(() {
       _isLoadingPlaylists = false;
@@ -203,8 +163,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   Future<void> _savePlaylists() async {
     final prefs = await SharedPreferences.getInstance();
-    final String encodedList = jsonEncode(_playlists.map((p) => p.toJson()).toList());
-    await prefs.setString('playlists', encodedList);
+    await prefs.setString('playlists', encodePlaylists(_playlists));
   }
 
   /// Slide the preferred range so it is centred (on a log scale, i.e. by
@@ -295,7 +254,21 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         curve: Curves.easeOut,
       ),
     );
+    // Each wrap of the repeating controller is one beat.
+    _metronomeController.addListener(() {
+      final v = _metronomeController.value;
+      if (v < _lastPulseValue) {
+        _beatIndex = (_beatIndex + 1) % _currentBeatsPerBar;
+      }
+      _lastPulseValue = v;
+    });
     _updateMetronomeTempo();
+  }
+
+  int get _currentBeatsPerBar {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return 4;
+    return playlist.items[_currentSetlistIndex].beatsPerBar;
   }
 
   void _updateMetronomeTempo() {
@@ -323,7 +296,22 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     } else {
       _metronomeController.stop();
       _metronomeController.reset();
+      _beatIndex = 0;
+      _lastPulseValue = 0;
     }
+    if (_beatIndex >= _currentBeatsPerBar) _beatIndex = 0;
+    _saveSetlistPosition();
+  }
+
+  /// Remember the current playlist and song across restarts. Skipped while
+  /// loading so the defaults don't overwrite the saved position.
+  void _saveSetlistPosition() {
+    if (_isLoadingPlaylists) return;
+    final playlist = _currentPlaylistIndex, song = _currentSetlistIndex;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setInt('currentPlaylist', playlist);
+      prefs.setInt('currentSong', song);
+    });
   }
 
   static const int _minSongBpm = 30;
@@ -372,6 +360,29 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       ));
   }
 
+  Widget _buildBeatDots(BuildContext context, Playlist playlist) {
+    final colors = Theme.of(context).colorScheme;
+    final n = _currentBeatsPerBar;
+    final playing = _isMetronomePlaying && playlist.items.isNotEmpty;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < n; i++)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: i == 0 ? 10 : 8,
+            height: i == 0 ? 10 : 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: playing && i == _beatIndex
+                  ? (i == 0 ? colors.primary : colors.secondary)
+                  : Colors.grey.withAlpha(70),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildNudgeColumn(Playlist playlist, List<int> deltas) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -405,20 +416,119 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     });
   }
 
-  void _advanceSetlist() {
+  /// Move to song [index] of the current playlist and start its count-in:
+  /// the metronome starts on beat 1, the detector listens afresh, and the
+  /// metronome pauses once the band locks onto the song's marking.
+  void _goToSong(int index) {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return;
     setState(() {
-      final playlist = _playlists[_currentPlaylistIndex];
-      if (playlist.items.isNotEmpty) {
-        _currentSetlistIndex = (_currentSetlistIndex + 1) % playlist.items.length;
-        _isMetronomePlaying = true; // Auto-play on next song
-        _updateMetronomeTempo();
-        // Listen fresh for the new song, and pause the metronome once the
-        // band locks onto its marking.
-        _tempoDetector.reset();
-        _currentCalculatedBpm = 0;
-        _tempoLock.arm(playlist.items[_currentSetlistIndex].bpm.toDouble());
-      }
+      _currentSetlistIndex = index.clamp(0, playlist.items.length - 1);
+      _isMetronomePlaying = true;
+      _metronomeController.reset();
+      _beatIndex = 0;
+      _lastPulseValue = 0;
+      _updateMetronomeTempo();
+      _tempoDetector.reset();
+      _currentCalculatedBpm = 0;
+      _tempoLock.arm(playlist.items[_currentSetlistIndex].bpm.toDouble());
     });
+  }
+
+  bool get _isLastSong {
+    final playlist = _playlists[_currentPlaylistIndex];
+    return _currentSetlistIndex >= playlist.items.length - 1;
+  }
+
+  /// Next song; from the last song, go back to the top of the set (and say
+  /// so) rather than wrapping silently.
+  void _advanceSetlist() {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return;
+    if (_isLastSong) {
+      _goToSong(0);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('Back to the top of "${playlist.name}"'),
+          duration: const Duration(seconds: 2),
+        ));
+    } else {
+      _goToSong(_currentSetlistIndex + 1);
+    }
+  }
+
+  void _previousSong() {
+    if (_currentSetlistIndex > 0) _goToSong(_currentSetlistIndex - 1);
+  }
+
+  /// Bottom sheet listing the whole setlist; tap a song to jump to it.
+  void _showSetlistSheet() {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return;
+    final total = playlistDuration(playlist);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final colors = Theme.of(context).colorScheme;
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          builder: (context, scroll) => Column(
+            children: [
+              ListTile(
+                title: Text(playlist.name,
+                    style: Theme.of(context).textTheme.titleLarge),
+                subtitle: Text([
+                  '${playlist.items.length} songs',
+                  if (total.known > 0)
+                    '${formatDuration(total.seconds)}'
+                        '${total.known < playlist.items.length ? ' (${total.known} timed)' : ''}',
+                ].join(' · ')),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  controller: scroll,
+                  itemCount: playlist.items.length,
+                  itemBuilder: (context, i) {
+                    final song = playlist.items[i];
+                    final isCurrent = i == _currentSetlistIndex;
+                    return ListTile(
+                      selected: isCurrent,
+                      leading: CircleAvatar(
+                        radius: 16,
+                        backgroundColor: isCurrent
+                            ? colors.primary
+                            : colors.surfaceContainerHighest,
+                        foregroundColor:
+                            isCurrent ? colors.onPrimary : colors.onSurface,
+                        child: Text('${i + 1}'),
+                      ),
+                      title: Text(song.name),
+                      subtitle: Text([
+                        '${song.bpm} BPM',
+                        song.timeSignature,
+                        if (song.durationSeconds != null)
+                          formatDuration(song.durationSeconds!),
+                      ].join(' · ')),
+                      trailing: isCurrent ? const Text('NOW') : null,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _goToSong(i);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _setupMidi() async {
@@ -501,6 +611,217 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     super.dispose();
   }
 
+  // ==========================================================================
+  // Playlist management
+  // ==========================================================================
+
+  void _openPlaylistEditor(Playlist playlist) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlaylistEditScreen(
+          playlist: playlist,
+          onChanged: () {
+            setState(_updateMetronomeTempo);
+            _savePlaylists();
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Run [change] on the playlist list while keeping the current playlist
+  /// (and song) selected, wherever it ends up.
+  void _changePlaylists(void Function() change) {
+    final current = _playlists[_currentPlaylistIndex];
+    setState(() {
+      change();
+      final i = _playlists.indexOf(current);
+      if (i >= 0) {
+        _currentPlaylistIndex = i;
+      } else {
+        // The current playlist went away: fall back to a neighbour.
+        _currentPlaylistIndex =
+            _currentPlaylistIndex.clamp(0, _playlists.length - 1);
+        _currentSetlistIndex = 0;
+      }
+      _updateMetronomeTempo();
+    });
+    _savePlaylists();
+  }
+
+  void _reorderPlaylists(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    _changePlaylists(() {
+      _playlists.insert(newIndex, _playlists.removeAt(oldIndex));
+    });
+  }
+
+  void _duplicatePlaylist(int index) {
+    final original = _playlists[index];
+    _changePlaylists(() {
+      // The copy appears right below the original in the open drawer.
+      _playlists.insert(index + 1, original.copy(name: '${original.name} (copy)'));
+    });
+  }
+
+  Future<void> _confirmDeletePlaylist(int index) async {
+    final playlist = _playlists[index];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete "${playlist.name}"?'),
+        content: Text('Its ${playlist.items.length} songs will be removed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    // Close the drawer so the Undo snackbar isn't hidden behind it.
+    Navigator.pop(context);
+
+    final wasCurrent = index == _currentPlaylistIndex;
+    final songIndex = _currentSetlistIndex;
+    _changePlaylists(() => _playlists.removeAt(index));
+    _showSnack('Deleted "${playlist.name}"', undo: () {
+      _changePlaylists(() => _playlists.insert(index, playlist));
+      if (wasCurrent) {
+        setState(() {
+          _currentPlaylistIndex = index;
+          _currentSetlistIndex = songIndex;
+          _updateMetronomeTempo();
+        });
+      }
+    });
+  }
+
+  Future<void> _sharePlaylist(Playlist playlist) async {
+    await SharePlus.instance.share(ShareParams(
+      text: playlistToText(playlist),
+      subject: '${playlist.name} (SCBeatWiz setlist)',
+    ));
+  }
+
+  /// [base], or "[base] (2)", "(3)"… if a playlist already has that name.
+  String _uniquePlaylistName(String base) {
+    final names = _playlists.map((p) => p.name).toSet();
+    if (!names.contains(base)) return base;
+    for (var n = 2;; n++) {
+      final candidate = '$base ($n)';
+      if (!names.contains(candidate)) return candidate;
+    }
+  }
+
+  Future<void> _showImportDialog() async {
+    final controller = TextEditingController();
+    var preview = parsePlaylistText('');
+    final result = await showDialog<PlaylistImport>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          void update() =>
+              setDialogState(() => preview = parsePlaylistText(controller.text));
+          final songs = preview.songCount;
+          final skipped = preview.skippedLines.length;
+          return AlertDialog(
+            title: const Text('Import Playlist'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Paste a setlist shared from SCBeatWiz, or one song per '
+                    'line like "Superstition, 100".',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: controller,
+                    minLines: 4,
+                    maxLines: 10,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: '# Setlist: Friday Gig\nSuperstition, 100\nValerie, 118',
+                    ),
+                    onChanged: (_) => update(),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.content_paste),
+                      label: const Text('Paste'),
+                      onPressed: () async {
+                        final data = await Clipboard.getData(Clipboard.kTextPlain);
+                        if (data?.text == null) return;
+                        controller.text = data!.text!;
+                        update();
+                      },
+                    ),
+                  ),
+                  Text(
+                    songs == 0
+                        ? (controller.text.trim().isEmpty ? '' : 'No songs found')
+                        : 'Found $songs song${songs == 1 ? '' : 's'}'
+                            '${preview.playlists.length > 1 ? ' in ${preview.playlists.length} playlists' : ''}'
+                            '${skipped > 0 ? ' · $skipped line${skipped == 1 ? '' : 's'} skipped' : ''}',
+                    style: TextStyle(
+                        color: songs == 0 ? Colors.redAccent : Colors.grey[300]),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: songs == 0 ? null : () => Navigator.pop(context, preview),
+                child: const Text('Import'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (result == null || result.playlists.isEmpty || !mounted) return;
+
+    final first = _playlists.length;
+    setState(() {
+      for (final p in result.playlists) {
+        p.name = _uniquePlaylistName(p.name);
+        _playlists.add(p);
+      }
+      // Switch to the (first) imported playlist.
+      _currentPlaylistIndex = first;
+      _currentSetlistIndex = 0;
+      _updateMetronomeTempo();
+    });
+    _savePlaylists();
+    final skipped = result.skippedLines.length;
+    _showSnack('Imported "${_playlists[first].name}" '
+        '(${result.songCount} songs'
+        '${skipped > 0 ? ', $skipped line${skipped == 1 ? '' : 's'} skipped' : ''})');
+  }
+
+  void _showSnack(String message, {VoidCallback? undo}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        action: undo == null ? null : SnackBarAction(label: 'Undo', onPressed: undo),
+      ));
+  }
+
   Widget _buildDrawer() {
     return Drawer(
       child: Column(
@@ -512,13 +833,20 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            // Long-press and drag to reorder.
+            child: ReorderableListView.builder(
               itemCount: _playlists.length,
+              onReorder: _reorderPlaylists,
               itemBuilder: (context, index) {
                 final playlist = _playlists[index];
+                final total = playlistDuration(playlist);
                 return ListTile(
+                  key: ObjectKey(playlist),
                   title: Text(playlist.name),
-                  subtitle: Text('${playlist.items.length} songs'),
+                  subtitle: Text([
+                    '${playlist.items.length} songs',
+                    if (total.known > 0) formatDuration(total.seconds),
+                  ].join(' · ')),
                   selected: _currentPlaylistIndex == index,
                   onTap: () {
                     setState(() {
@@ -528,40 +856,41 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     });
                     Navigator.pop(context);
                   },
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PlaylistEditScreen(
-                                playlist: playlist,
-                                onChanged: () {
-                                  setState(_updateMetronomeTempo);
-                                  _savePlaylists();
-                                },
-                              ),
-                            ),
-                          );
-                        },
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'Playlist actions',
+                    onSelected: (action) {
+                      switch (action) {
+                        case 'edit':
+                          _openPlaylistEditor(playlist);
+                        case 'duplicate':
+                          _duplicatePlaylist(index);
+                        case 'share':
+                          _sharePlaylist(playlist);
+                        case 'delete':
+                          _confirmDeletePlaylist(index);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(leading: Icon(Icons.edit), title: Text('Edit')),
                       ),
-                      if (_playlists.length > 1) // Only allow delete if it's not the last playlist
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.redAccent),
-                          onPressed: () {
-                            setState(() {
-                              _playlists.removeAt(index);
-                              if (_currentPlaylistIndex >= index && _currentPlaylistIndex > 0) {
-                                _currentPlaylistIndex--;
-                              }
-                              _currentSetlistIndex = 0;
-                              _updateMetronomeTempo();
-                            });
-                            _savePlaylists();
-                          },
+                      const PopupMenuItem(
+                        value: 'duplicate',
+                        child: ListTile(leading: Icon(Icons.copy), title: Text('Duplicate')),
+                      ),
+                      const PopupMenuItem(
+                        value: 'share',
+                        child: ListTile(leading: Icon(Icons.share), title: Text('Share')),
+                      ),
+                      // Keep at least one playlist.
+                      if (_playlists.length > 1)
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: ListTile(
+                            leading: Icon(Icons.delete, color: Colors.redAccent),
+                            title: Text('Delete'),
+                          ),
                         ),
                     ],
                   ),
@@ -576,6 +905,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             onTap: () {
               Navigator.pop(context); // close drawer
               _showAddPlaylistDialog();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.content_paste),
+            title: const Text('Import Playlist'),
+            onTap: () {
+              Navigator.pop(context); // close drawer
+              _showImportDialog();
             },
           ),
           const SizedBox(height: 24),
@@ -902,204 +1239,296 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         ],
       ),
       drawer: _buildDrawer(),
-      body: Column(
-        children: [
-          // Top: BPM Graph
-          Expanded(
-            flex: 2,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Prefer ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
-                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                      ),
-                      Expanded(
-                        child: RangeSlider(
-                          values: _preferredRange,
-                          min: _rangeLimitMin,
-                          max: _rangeLimitMax,
-                          divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
-                          labels: RangeLabels(
-                            '${_preferredRange.start.round()}',
-                            '${_preferredRange.end.round()}',
-                          ),
-                          onChanged: (v) {
-                            // Keep at least 10 BPM between handles.
-                            if (v.end - v.start < 10) return;
-                            _setPreferredRange(v);
-                          },
-                          onChangeEnd: (_) => _savePreferredRange(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Expanded(
-                    child: Stack(
+      // Keep content clear of the system navigation bar (edge-to-edge).
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            // Top: BPM Graph
+            Expanded(
+              flex: 2,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
                       children: [
-                        Positioned.fill(child: _buildTempoChart(context)),
-                        // Detected tempo, overlaid on the top of the graph.
-                        Positioned(
-                          top: 4,
-                          left: 40, // clear of the left axis labels
-                          right: 0,
-                          child: IgnorePointer(child: _buildTempoReadout(context)),
+                        Text(
+                          'Prefer ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
+                          style: TextStyle(color: Colors.grey[400], fontSize: 12),
                         ),
-                        // Confidence light along the bottom of the plot.
-                        Positioned(
-                          bottom: 30, // just above the time labels
-                          left: 40,
-                          right: 0,
-                          child: IgnorePointer(
-                            child: Center(child: _buildConfidenceIndicator(context)),
+                        Expanded(
+                          child: RangeSlider(
+                            values: _preferredRange,
+                            min: _rangeLimitMin,
+                            max: _rangeLimitMax,
+                            divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
+                            labels: RangeLabels(
+                              '${_preferredRange.start.round()}',
+                              '${_preferredRange.end.round()}',
+                            ),
+                            onChanged: (v) {
+                              // Keep at least 10 BPM between handles.
+                              if (v.end - v.start < 10) return;
+                              _setPreferredRange(v);
+                            },
+                            onChangeEnd: (_) => _savePreferredRange(),
                           ),
-                        ),
-                        // History length, bottom-right of the plot.
-                        Positioned(
-                          bottom: 30,
-                          right: 4,
-                          child: _buildHistoryChip(context),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          const Divider(height: 1, thickness: 2),
-
-          // Bottom: Metronome & Setlist
-          Expanded(
-            flex: 3,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Pulse Indicator, flanked by tempo nudge buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildNudgeColumn(playlist, const [-1, -5]),
-                        const SizedBox(width: 16),
-                        // The circle is also the play/stop button.
-                        Semantics(
-                          button: true,
-                          label: _isMetronomePlaying ? 'Stop metronome' : 'Start metronome',
-                          child: GestureDetector(
-                            onTap: playlist.items.isEmpty ? null : _toggleMetronome,
-                            child: AnimatedBuilder(
-                              animation: _pulseAnimation,
-                              builder: (context, child) {
-                                return Container(
-                                  width: 150,
-                                  height: 150,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: _isMetronomePlaying && playlist.items.isNotEmpty
-                                        ? Theme.of(context).colorScheme.secondary.withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
-                                        : Theme.of(context).colorScheme.surfaceContainerHighest,
-                                    boxShadow: [
-                                      if (_isMetronomePlaying && playlist.items.isNotEmpty)
-                                        BoxShadow(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .secondary
-                                              .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
-                                          blurRadius: 30,
-                                          spreadRadius: 10,
-                                        ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      // Spacer matching the icon below keeps the
-                                      // number centred in the circle.
-                                      const SizedBox(height: 28),
-                                      Text(
-                                        '${currentItem.bpm}',
-                                        style: const TextStyle(
-                                          fontSize: 48,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      Icon(
-                                        _isMetronomePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                                        size: 28,
-                                        color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Positioned.fill(child: _buildTempoChart(context)),
+                          // Detected tempo, overlaid on the top of the graph.
+                          Positioned(
+                            top: 4,
+                            left: 40, // clear of the left axis labels
+                            right: 0,
+                            child: IgnorePointer(child: _buildTempoReadout(context)),
+                          ),
+                          // Confidence light along the bottom of the plot.
+                          Positioned(
+                            bottom: 30, // just above the time labels
+                            left: 40,
+                            right: 0,
+                            child: IgnorePointer(
+                              child: Center(child: _buildConfidenceIndicator(context)),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        _buildNudgeColumn(playlist, const [1, 5]),
-                      ],
+                          // History length, bottom-right of the plot.
+                          Positioned(
+                            bottom: 30,
+                            right: 4,
+                            child: _buildHistoryChip(context),
+                          ),
+                        ],
+                      ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+          
+            const Divider(height: 1, thickness: 2),
 
-                    const SizedBox(height: 16),
+            // Bottom: Metronome & Setlist
+            Expanded(
+              flex: 3,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+                child: Column(
+                  children: [
+                    // Metronome and song info scroll if they don't fit; the
+                    // song controls below stay pinned so Next is always reachable.
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Pulse Indicator, flanked by tempo nudge buttons
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildNudgeColumn(playlist, const [-1, -5]),
+                                const SizedBox(width: 16),
+                                // The circle is also the play/stop button.
+                                Semantics(
+                                  button: true,
+                                  label: _isMetronomePlaying ? 'Stop metronome' : 'Start metronome',
+                                  child: GestureDetector(
+                                    onTap: playlist.items.isEmpty ? null : _toggleMetronome,
+                                    child: AnimatedBuilder(
+                                      animation: _pulseAnimation,
+                                      builder: (context, child) {
+                                        return Container(
+                                          width: 136,
+                                          height: 136,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: _isMetronomePlaying && playlist.items.isNotEmpty
+                                                ? (_beatIndex == 0
+                                                            // Downbeat: brighter accent colour.
+                                                            ? Theme.of(context).colorScheme.primary
+                                                            : Theme.of(context).colorScheme.secondary)
+                                                        .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
+                                                : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                            boxShadow: [
+                                              if (_isMetronomePlaying && playlist.items.isNotEmpty)
+                                                BoxShadow(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .secondary
+                                                      .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
+                                                  blurRadius: 30,
+                                                  spreadRadius: 10,
+                                                ),
+                                            ],
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              // Spacer matching the icon below keeps the
+                                              // number centred in the circle.
+                                              const SizedBox(height: 28),
+                                              Text(
+                                                '${currentItem.bpm}',
+                                                style: const TextStyle(
+                                                  fontSize: 48,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              Icon(
+                                                _isMetronomePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                                                size: 28,
+                                                color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                _buildNudgeColumn(playlist, const [1, 5]),
+                              ],
+                            ),
 
-                    // Capture the heard tempo
-                    FilledButton.tonalIcon(
-                      onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
-                          ? null
-                          : _captureDetectedBpm,
-                      icon: const Icon(Icons.hearing),
-                      label: Text(_currentCalculatedBpm > 0
-                          ? 'Capture ${_currentCalculatedBpm.round()}'
-                          : 'Capture'),
-                    ),
+                            const SizedBox(height: 8),
+                            // Beats in the bar; the lit dot is the current beat.
+                            AnimatedBuilder(
+                              animation: _pulseAnimation,
+                              builder: (context, _) => _buildBeatDots(context, playlist),
+                            ),
+                            const SizedBox(height: 8),
 
-                    const SizedBox(height: 24),
+                            // Capture the heard tempo
+                            FilledButton.tonalIcon(
+                              onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
+                                  ? null
+                                  : _captureDetectedBpm,
+                              icon: const Icon(Icons.hearing),
+                              label: Text(_currentCalculatedBpm > 0
+                                  ? 'Capture ${_currentCalculatedBpm.round()}'
+                                  : 'Capture'),
+                            ),
+
+                            const SizedBox(height: 8),
                     
-                    // Setlist Info
-                    Text(
-                      'CURRENT',
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        letterSpacing: 2,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                            // Setlist Info — tap to see and jump around the setlist
+                            InkWell(
+                              onTap: playlist.items.isEmpty ? null : _showSetlistSheet,
+                              borderRadius: BorderRadius.circular(16),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          playlist.items.isEmpty
+                                              ? 'CURRENT'
+                                              : 'SONG ${_currentSetlistIndex + 1} OF ${playlist.items.length}',
+                                          style: TextStyle(
+                                            color: Colors.grey[400],
+                                            letterSpacing: 2,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (playlist.items.isNotEmpty) ...[
+                                          const SizedBox(width: 6),
+                                          Icon(Icons.queue_music, size: 16, color: Colors.grey[400]),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      currentItem.name,
+                                      style: Theme.of(context).textTheme.headlineSmall,
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    if (playlist.items.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        [
+                                          currentItem.timeSignature,
+                                          if (currentItem.durationSeconds != null)
+                                            formatDuration(currentItem.durationSeconds!),
+                                        ].join('  ·  '),
+                                        style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                                      ),
+                                      if (currentItem.notes.isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          currentItem.notes,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.grey[300],
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        _isLastSong
+                                            ? 'Last song of the set'
+                                            : 'Up next: ${playlist.items[_currentSetlistIndex + 1].name}'
+                                                ' · ${playlist.items[_currentSetlistIndex + 1].bpm}',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      currentItem.name,
-                      style: Theme.of(context).textTheme.headlineSmall,
-                      textAlign: TextAlign.center,
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
                     // Controls
-                    ElevatedButton.icon(
-                      onPressed: playlist.items.isEmpty ? null : _advanceSetlist,
-                      icon: const Icon(Icons.skip_next, size: 32),
-                      label: const Text(
-                        'NEXT SONG',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: 'Previous song',
+                          iconSize: 32,
+                          onPressed: playlist.items.isEmpty || _currentSetlistIndex == 0
+                              ? null
+                              : _previousSong,
+                          icon: const Icon(Icons.skip_previous),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          onPressed: playlist.items.isEmpty ? null : _advanceSetlist,
+                          icon: Icon(
+                              _isLastSong ? Icons.replay : Icons.skip_next,
+                              size: 32),
+                          label: Text(
+                            _isLastSong ? 'RESTART SET' : 'NEXT SONG',
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 6),
                     Text(
                       'MIDI trigger active (Any CC/Note)',
                       style: TextStyle(color: Colors.grey[500], fontSize: 12),
@@ -1108,8 +1537,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1165,7 +1594,19 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                 return ListTile(
                   key: ValueKey('${song.name}_${song.bpm}_$index'),
                   title: Text(song.name),
-                  subtitle: Text('${song.bpm} BPM'),
+                  subtitle: Text(
+                    [
+                      [
+                        '${song.bpm} BPM',
+                        song.timeSignature,
+                        if (song.durationSeconds != null)
+                          formatDuration(song.durationSeconds!),
+                      ].join(' · '),
+                      if (song.notes.isNotEmpty) song.notes.split('\n').first,
+                    ].join('\n'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1176,10 +1617,27 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.redAccent),
                         onPressed: () {
+                          final removed = widget.playlist.items[index];
                           setState(() {
                             widget.playlist.items.removeAt(index);
                             widget.onChanged();
                           });
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(SnackBar(
+                              content: Text('Removed "${removed.name}"'),
+                              action: SnackBarAction(
+                                label: 'Undo',
+                                onPressed: () {
+                                  // Works even after leaving the editor.
+                                  widget.playlist.items.insert(
+                                      index.clamp(0, widget.playlist.items.length),
+                                      removed);
+                                  widget.onChanged();
+                                  if (mounted) setState(() {});
+                                },
+                              ),
+                            ));
                         },
                       ),
                       ReorderableDragStartListener(
@@ -1235,54 +1693,119 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
 
   void _showSongDialog(int? index, SetlistItem? currentSong) {
     final nameController = TextEditingController(text: currentSong?.name ?? '');
-    final bpmController = TextEditingController(text: currentSong?.bpm.toString() ?? '120');
+    final bpmController =
+        TextEditingController(text: currentSong?.bpm.toString() ?? '120');
+    final durationController = TextEditingController(
+        text: currentSong?.durationSeconds == null
+            ? ''
+            : formatDuration(currentSong!.durationSeconds!));
+    final notesController = TextEditingController(text: currentSong?.notes ?? '');
+    var timeSignature = currentSong?.timeSignature ?? '4/4';
+    String? durationError;
 
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text(currentSong == null ? 'Add Song' : 'Edit Song'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                decoration: const InputDecoration(labelText: 'Song Name'),
-                controller: nameController,
-                autofocus: true,
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(currentSong == null ? 'Add Song' : 'Edit Song'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    decoration: const InputDecoration(labelText: 'Song Name'),
+                    controller: nameController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          decoration: const InputDecoration(labelText: 'BPM'),
+                          keyboardType: TextInputType.number,
+                          controller: bpmController,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: timeSignature,
+                          decoration: const InputDecoration(labelText: 'Time'),
+                          items: [
+                            for (final ts in timeSignatures)
+                              DropdownMenuItem(value: ts, child: Text(ts)),
+                          ],
+                          onChanged: (v) => timeSignature = v ?? timeSignature,
+                        ),
+                      ),
+                    ],
+                  ),
+                  TextField(
+                    decoration: InputDecoration(
+                      labelText: 'Length (optional)',
+                      hintText: 'm:ss',
+                      errorText: durationError,
+                    ),
+                    keyboardType: TextInputType.datetime,
+                    controller: durationController,
+                  ),
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                      hintText: 'Key, cues, who starts…',
+                    ),
+                    controller: notesController,
+                    minLines: 1,
+                    maxLines: 4,
+                    textCapitalization: TextCapitalization.sentences,
+                  ),
+                ],
               ),
-              TextField(
-                decoration: const InputDecoration(labelText: 'BPM'),
-                keyboardType: TextInputType.number,
-                controller: bpmController,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final durationText = durationController.text.trim();
+                  final duration = parseDuration(durationText);
+                  if (durationText.isNotEmpty && duration == null) {
+                    setDialogState(() => durationError = 'Use m:ss, e.g. 3:45');
+                    return;
+                  }
+                  final bpm = (int.tryParse(bpmController.text.trim()) ?? 120)
+                      .clamp(30, 300);
+                  var name = nameController.text.trim();
+                  if (name.isEmpty) name = 'Unnamed Song';
+                  final notes = notesController.text.trim();
+
+                  setState(() {
+                    if (currentSong == null) {
+                      widget.playlist.items.add(SetlistItem(name, bpm,
+                          timeSignature: timeSignature,
+                          notes: notes,
+                          durationSeconds: duration));
+                    } else {
+                      currentSong
+                        ..name = name
+                        ..bpm = bpm
+                        ..timeSignature = timeSignature
+                        ..notes = notes
+                        ..durationSeconds = duration;
+                    }
+                    widget.onChanged();
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Save'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                final bpm = int.tryParse(bpmController.text) ?? 120;
-                var name = nameController.text.trim();
-                if (name.isEmpty) name = 'Unnamed Song';
-
-                setState(() {
-                  if (currentSong == null) {
-                    widget.playlist.items.add(SetlistItem(name, bpm));
-                  } else {
-                    currentSong.name = name;
-                    currentSong.bpm = bpm;
-                  }
-                  widget.onChanged();
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
+          );
+        });
       },
     );
   }

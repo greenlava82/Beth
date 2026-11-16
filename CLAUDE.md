@@ -21,6 +21,11 @@ maintained.
 
 - `lib/main.dart` — the whole UI and app state (`MetronomeScreen`): setlists,
   metronome, tempo graph, mic handling, MIDI trigger, persistence.
+- `lib/playlist.dart` — `Playlist` / `SetlistItem` (name, BPM, time
+  signature, notes, optional duration), JSON encode/decode (tolerant of old
+  or partial data), duration helpers. Pure Dart.
+- `lib/playlist_text.dart` — plain-text setlist export (`playlistToText`) and
+  lenient import (`parsePlaylistText`, also accepts the app's JSON). Pure Dart.
 - `lib/tempo_detector.dart` — `TempoDetector`, pure Dart, no Flutter imports.
   Spectral-flux onset detection (2048 FFT, 10 ms hop, log bands) → harmonic-comb
   autocorrelation over the last 8 s → octave choice via a preferred range +
@@ -31,11 +36,18 @@ maintained.
 - `test/tempo_detector_test.dart` — synthesizes audio (drums, snaps, piano,
   guitar, legato bass, swing, 3/4, tempo change, noise) and checks detection.
 - `test/tempo_lock_test.dart` — unit tests for `TempoLock`.
+- `test/playlist_test.dart`, `test/playlist_text_test.dart` — model, JSON
+  compatibility, durations, and share/import format tests.
 - `test/widget_test.dart` — app smoke test.
 
 Persisted in `SharedPreferences`: `playlists` (JSON), `preferredMinBpm`,
-`preferredMaxBpm`, `historyMinutes`. Changing their shape needs a migration or
-a tolerant loader.
+`preferredMaxBpm`, `historyMinutes`, `currentPlaylist`, `currentSong`.
+Changing their shape needs a migration or a tolerant loader; new song fields
+must default sensibly in `SetlistItem.fromJson` (see `playlist_test.dart`).
+
+All song changes go through `_goToSong()` (starts the count-in metronome on
+beat 1, resets the detector, arms `TempoLock`); playlist list changes go
+through `_changePlaylists()` (keeps the current playlist selected).
 
 ## Build, run, test
 
@@ -96,8 +108,9 @@ Notes:
 
 ## Making changes
 
-- Detection logic belongs in `tempo_detector.dart` / `tempo_lock.dart`, not
-  `main.dart`, and must come with tests. Keep those files free of Flutter
+- Detection logic belongs in `tempo_detector.dart` / `tempo_lock.dart`, and
+  playlist data/format logic in `playlist.dart` / `playlist_text.dart` — not
+  `main.dart` — and must come with tests. Keep those files free of Flutter
   imports so they stay fast to unit-test.
 - When tuning the detector, run the full synthetic suite: fixes for one case
   (e.g. octave choice) easily regress another (e.g. 3/4 time reading as 2/3
