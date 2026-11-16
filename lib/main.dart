@@ -1341,25 +1341,39 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         ],
       ),
       drawer: _buildDrawer(),
-      // Keep content clear of the system navigation bar (edge-to-edge).
+      // Keep content clear of the system bars (edge-to-edge; in landscape
+      // this also keeps clear of the camera cut-out).
       body: SafeArea(
         top: false,
-        child: Column(
-          children: [
-            Expanded(flex: 2, child: _buildGraphSection(context)),
-            const Divider(height: 1, thickness: 2),
-            Expanded(
-              flex: 3,
-              child: _buildControlsSection(context, playlist, currentItem),
-            ),
-          ],
-        ),
+        child: MediaQuery.orientationOf(context) == Orientation.landscape
+            // Landscape: graph on the left, metronome and setlist on the right.
+            ? Row(
+                children: [
+                  Expanded(child: _buildGraphSection(context)),
+                  const VerticalDivider(width: 1, thickness: 2),
+                  Expanded(
+                    child: _buildControlsSection(context, playlist, currentItem,
+                        landscape: true),
+                  ),
+                ],
+              )
+            // Portrait: graph above, metronome and setlist below.
+            : Column(
+                children: [
+                  Expanded(flex: 2, child: _buildGraphSection(context)),
+                  const Divider(height: 1, thickness: 2),
+                  Expanded(
+                    flex: 3,
+                    child: _buildControlsSection(context, playlist, currentItem),
+                  ),
+                ],
+              ),
       ),
     );
   }
 
-  /// Upper half: preferred-range slider and the tempo graph with its
-  /// overlays.
+  /// Top (portrait) / left (landscape): preferred-range slider and the tempo
+  /// graph with its overlays.
   Widget _buildGraphSection(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1426,9 +1440,198 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
-  /// Lower half: metronome, song info and the pinned Previous/Next controls.
-  Widget _buildControlsSection(
+  /// The pulsing metronome circle; also the play/stop button.
+  Widget _buildMetronomeCircle(
+      BuildContext context, Playlist playlist, SetlistItem currentItem,
+      {double size = 136}) {
+    return Semantics(
+      button: true,
+      label: _isMetronomePlaying ? 'Stop metronome' : 'Start metronome',
+      child: GestureDetector(
+        onTap: playlist.items.isEmpty ? null : _toggleMetronome,
+        child: AnimatedBuilder(
+          animation: _pulseAnimation,
+          builder: (context, child) {
+            return Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _isMetronomePlaying && playlist.items.isNotEmpty
+                    ? (_beatIndex == 0
+                                // Downbeat: brighter accent colour.
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.secondary)
+                            .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                boxShadow: [
+                  if (_isMetronomePlaying && playlist.items.isNotEmpty)
+                    BoxShadow(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .secondary
+                          .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
+                      blurRadius: 30,
+                      spreadRadius: 10,
+                    ),
+                ],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Spacer matching the icon below keeps the
+                  // number centred in the circle.
+                  SizedBox(height: size * 0.2),
+                  Text(
+                    '${currentItem.bpm}',
+                    style: TextStyle(
+                      fontSize: size * 0.35,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Icon(
+                    _isMetronomePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                    size: size * 0.2,
+                    color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Saves the heard tempo as the current song's BPM.
+  Widget _buildCaptureButton(Playlist playlist) {
+    return FilledButton.tonalIcon(
+      onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
+          ? null
+          : _captureDetectedBpm,
+      icon: const Icon(Icons.hearing),
+      label: Text(_currentCalculatedBpm > 0
+          ? 'Capture ${_currentCalculatedBpm.round()}'
+          : 'Capture'),
+    );
+  }
+
+  /// "SONG n OF m", name, time signature, notes and up next; tap for the
+  /// setlist sheet.
+  Widget _buildSongInfo(
       BuildContext context, Playlist playlist, SetlistItem currentItem) {
+    return InkWell(
+      onTap: playlist.items.isEmpty ? null : _showSetlistSheet,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  playlist.items.isEmpty
+                      ? 'CURRENT'
+                      : 'SONG ${_currentSetlistIndex + 1} OF ${playlist.items.length}',
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    letterSpacing: 2,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (playlist.items.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Icon(Icons.queue_music, size: 16, color: Colors.grey[400]),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              currentItem.name,
+              style: Theme.of(context).textTheme.headlineSmall,
+              textAlign: TextAlign.center,
+            ),
+            if (playlist.items.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                [
+                  currentItem.timeSignature,
+                  if (currentItem.durationSeconds != null)
+                    formatDuration(currentItem.durationSeconds!),
+                ].join('  ·  '),
+                style: TextStyle(color: Colors.grey[400], fontSize: 13),
+              ),
+              if (currentItem.notes.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  currentItem.notes,
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey[300],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Text(
+                _isLastSong
+                    ? 'Last song of the set'
+                    : 'Up next: ${playlist.items[_currentSetlistIndex + 1].name}'
+                        ' · ${playlist.items[_currentSetlistIndex + 1].bpm}',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// −5 −1 +1 +5 in one compact row (landscape). Scales down to fit narrow
+  /// panels, e.g. beside the camera cut-out on an iPhone.
+  Widget _buildNudgeRow(Playlist playlist) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: _nudgeRowButtons(playlist),
+    );
+  }
+
+  Widget _nudgeRowButtons(Playlist playlist) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final d in const [-5, -1, 1, 5])
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: SizedBox(
+              width: 48,
+              height: 36,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+                onPressed:
+                    playlist.items.isEmpty ? null : () => _nudgeCurrentSongBpm(d),
+                child: Text(
+                  d > 0 ? '+$d' : '−${-d}',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Bottom (portrait) / right (landscape): metronome, song info and the
+  /// pinned Previous/Next controls.
+  Widget _buildControlsSection(
+      BuildContext context, Playlist playlist, SetlistItem currentItem,
+      {bool landscape = false}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
@@ -1438,173 +1641,62 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           // song controls below stay pinned so Next is always reachable.
           Expanded(
             child: SingleChildScrollView(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Pulse Indicator, flanked by tempo nudge buttons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildNudgeColumn(playlist, const [-1, -5]),
-                      const SizedBox(width: 16),
-                      // The circle is also the play/stop button.
-                      Semantics(
-                        button: true,
-                        label: _isMetronomePlaying ? 'Stop metronome' : 'Start metronome',
-                        child: GestureDetector(
-                          onTap: playlist.items.isEmpty ? null : _toggleMetronome,
-                          child: AnimatedBuilder(
-                            animation: _pulseAnimation,
-                            builder: (context, child) {
-                              return Container(
-                                width: 136,
-                                height: 136,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: _isMetronomePlaying && playlist.items.isNotEmpty
-                                      ? (_beatIndex == 0
-                                                  // Downbeat: brighter accent colour.
-                                                  ? Theme.of(context).colorScheme.primary
-                                                  : Theme.of(context).colorScheme.secondary)
-                                              .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
-                                      : Theme.of(context).colorScheme.surfaceContainerHighest,
-                                  boxShadow: [
-                                    if (_isMetronomePlaying && playlist.items.isNotEmpty)
-                                      BoxShadow(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .secondary
-                                            .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
-                                        blurRadius: 30,
-                                        spreadRadius: 10,
-                                      ),
-                                  ],
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    // Spacer matching the icon below keeps the
-                                    // number centred in the circle.
-                                    const SizedBox(height: 28),
-                                    Text(
-                                      '${currentItem.bpm}',
-                                      style: const TextStyle(
-                                        fontSize: 48,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    Icon(
-                                      _isMetronomePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                                      size: 28,
-                                      color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      _buildNudgeColumn(playlist, const [1, 5]),
-                    ],
-                  ),
-
-                  const SizedBox(height: 8),
-                  // Beats in the bar; the lit dot is the current beat.
-                  AnimatedBuilder(
-                    animation: _pulseAnimation,
-                    builder: (context, _) => _buildBeatDots(context, playlist),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Capture the heard tempo
-                  FilledButton.tonalIcon(
-                    onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
-                        ? null
-                        : _captureDetectedBpm,
-                    icon: const Icon(Icons.hearing),
-                    label: Text(_currentCalculatedBpm > 0
-                        ? 'Capture ${_currentCalculatedBpm.round()}'
-                        : 'Capture'),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // Setlist Info — tap to see and jump around the setlist
-                  InkWell(
-                    onTap: playlist.items.isEmpty ? null : _showSetlistSheet,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                playlist.items.isEmpty
-                                    ? 'CURRENT'
-                                    : 'SONG ${_currentSetlistIndex + 1} OF ${playlist.items.length}',
-                                style: TextStyle(
-                                  color: Colors.grey[400],
-                                  letterSpacing: 2,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (playlist.items.isNotEmpty) ...[
-                                const SizedBox(width: 6),
-                                Icon(Icons.queue_music, size: 16, color: Colors.grey[400]),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            currentItem.name,
-                            style: Theme.of(context).textTheme.headlineSmall,
-                            textAlign: TextAlign.center,
-                          ),
-                          if (playlist.items.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              [
-                                currentItem.timeSignature,
-                                if (currentItem.durationSeconds != null)
-                                  formatDuration(currentItem.durationSeconds!),
-                              ].join('  ·  '),
-                              style: TextStyle(color: Colors.grey[400], fontSize: 13),
-                            ),
-                            if (currentItem.notes.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                currentItem.notes,
-                                textAlign: TextAlign.center,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.grey[300],
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 10),
-                            Text(
-                              _isLastSong
-                                  ? 'Last song of the set'
-                                  : 'Up next: ${playlist.items[_currentSetlistIndex + 1].name}'
-                                      ' · ${playlist.items[_currentSetlistIndex + 1].bpm}',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey[500], fontSize: 13),
+              child: landscape
+                  // Landscape: metronome on the left of the panel, nudges,
+                  // song info and Capture beside it.
+                  ? Row(
+                      children: [
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildMetronomeCircle(context, playlist, currentItem,
+                                size: 112),
+                            const SizedBox(height: 8),
+                            AnimatedBuilder(
+                              animation: _pulseAnimation,
+                              builder: (context, _) => _buildBeatDots(context, playlist),
                             ),
                           ],
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildNudgeRow(playlist),
+                              _buildSongInfo(context, playlist, currentItem),
+                              _buildCaptureButton(playlist),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Pulse Indicator, flanked by tempo nudge buttons
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildNudgeColumn(playlist, const [-1, -5]),
+                            const SizedBox(width: 16),
+                            _buildMetronomeCircle(context, playlist, currentItem),
+                            const SizedBox(width: 16),
+                            _buildNudgeColumn(playlist, const [1, 5]),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Beats in the bar; the lit dot is the current beat.
+                        AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, _) => _buildBeatDots(context, playlist),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildCaptureButton(playlist),
+                        const SizedBox(height: 8),
+                        _buildSongInfo(context, playlist, currentItem),
+                      ],
                     ),
-                  ),
-                ],
-              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -1640,11 +1732,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            'MIDI trigger active (Any CC/Note)',
-            style: TextStyle(color: Colors.grey[500], fontSize: 12),
-          ),
+          // The hint costs height that landscape doesn't have.
+          if (!landscape) ...[
+            const SizedBox(height: 6),
+            Text(
+              'MIDI trigger active (Any CC/Note)',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            ),
+          ],
         ],
       ),
     );
