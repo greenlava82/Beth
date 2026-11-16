@@ -144,6 +144,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       // Unreadable data: keep the defaults rather than crash.
       debugPrint('Could not read saved playlists; using defaults');
     }
+
+    // Pick up where we left off (e.g. after the app was killed mid-set).
+    final savedPlaylist = prefs.getInt('currentPlaylist') ?? 0;
+    _currentPlaylistIndex = savedPlaylist.clamp(0, _playlists.length - 1);
+    final songCount = _playlists[_currentPlaylistIndex].items.length;
+    _currentSetlistIndex = songCount == 0
+        ? 0
+        : (prefs.getInt('currentSong') ?? 0).clamp(0, songCount - 1);
     
     setState(() {
       _isLoadingPlaylists = false;
@@ -290,6 +298,18 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _lastPulseValue = 0;
     }
     if (_beatIndex >= _currentBeatsPerBar) _beatIndex = 0;
+    _saveSetlistPosition();
+  }
+
+  /// Remember the current playlist and song across restarts. Skipped while
+  /// loading so the defaults don't overwrite the saved position.
+  void _saveSetlistPosition() {
+    if (_isLoadingPlaylists) return;
+    final playlist = _currentPlaylistIndex, song = _currentSetlistIndex;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setInt('currentPlaylist', playlist);
+      prefs.setInt('currentSong', song);
+    });
   }
 
   static const int _minSongBpm = 30;
