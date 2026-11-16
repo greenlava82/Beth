@@ -326,6 +326,57 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
   }
 
+  static const int _minSongBpm = 30;
+  static const int _maxSongBpm = 300;
+
+  /// Change a song's BPM, persist it, and retune the metronome / detector
+  /// if it's the current song.
+  void _setSongBpm(SetlistItem song, int bpm) {
+    bpm = bpm.clamp(_minSongBpm, _maxSongBpm);
+    if (bpm == song.bpm) return;
+    setState(() {
+      song.bpm = bpm;
+      _updateMetronomeTempo();
+    });
+    final playlist = _playlists[_currentPlaylistIndex];
+    final isCurrent = playlist.items.isNotEmpty &&
+        identical(playlist.items[_currentSetlistIndex], song);
+    // If we're still counting in, watch for the new target instead.
+    if (isCurrent && _tempoLock.isArmed) _tempoLock.arm(bpm.toDouble());
+    _savePlaylists();
+  }
+
+  void _nudgeCurrentSongBpm(int delta) {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return;
+    final song = playlist.items[_currentSetlistIndex];
+    _setSongBpm(song, song.bpm + delta);
+  }
+
+  Widget _buildNudgeColumn(Playlist playlist, List<int> deltas) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final d in deltas) ...[
+          SizedBox(
+            width: 56,
+            height: 40,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+              onPressed:
+                  playlist.items.isEmpty ? null : () => _nudgeCurrentSongBpm(d),
+              child: Text(
+                d > 0 ? '+$d' : '−${-d}',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          if (d != deltas.last) const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+
   void _toggleMetronome() {
     // Manual control wins: don't auto-pause a metronome the user started.
     _tempoLock.disarm();
@@ -914,11 +965,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Pulse Indicator
+                    // Pulse Indicator, flanked by tempo nudge buttons
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const SizedBox(width: 48), // Balance the icon button width
+                        _buildNudgeColumn(playlist, const [-1, -5]),
+                        const SizedBox(width: 16),
                         AnimatedBuilder(
                           animation: _pulseAnimation,
                           builder: (context, child) {
@@ -956,6 +1008,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                           },
                         ),
                         const SizedBox(width: 16),
+                        _buildNudgeColumn(playlist, const [1, 5]),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Play/stop
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                         IconButton(
                           iconSize: 32,
                           icon: Icon(_isMetronomePlaying ? Icons.stop_circle_outlined : Icons.play_circle_fill),
@@ -964,8 +1026,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                         ),
                       ],
                     ),
-                    
-                    const SizedBox(height: 48),
+
+                    const SizedBox(height: 24),
                     
                     // Setlist Info
                     Text(
