@@ -990,6 +990,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   /// BPM axis range fitted to the readings currently on screen, with
   /// headroom on top for the tempo readout. Returns (minY, maxY, step).
+  /// The current song's BPM, or null with an empty playlist.
+  double? get _currentTargetBpm {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return null;
+    return playlist.items[_currentSetlistIndex].bpm.toDouble();
+  }
+
   (double, double, double) _chartYRange(double minX) {
     double? lo, hi;
     for (final spot in _bpmHistory) {
@@ -1000,6 +1007,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     // No readings yet: frame the preferred range.
     lo ??= _preferredRange.start;
     hi ??= _preferredRange.end;
+    // Keep the target line in view so drift can be seen against it.
+    final target = _currentTargetBpm;
+    if (target != null) {
+      lo = math.min(lo, target);
+      hi = math.max(hi, target);
+    }
 
     // At least 30 BPM of span so a steady tempo isn't magnified into noise.
     if (hi - lo < 30) {
@@ -1090,6 +1103,23 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         borderData: FlBorderData(show: true),
         minY: minY,
         maxY: maxY,
+        // The song's target BPM, to see drift against.
+        extraLinesData: ExtraLinesData(horizontalLines: [
+          if (_currentTargetBpm != null)
+            HorizontalLine(
+              y: _currentTargetBpm!,
+              color: Colors.white.withAlpha(170),
+              strokeWidth: 1.5,
+              dashArray: const [6, 4],
+              label: HorizontalLineLabel(
+                show: true,
+                alignment: Alignment.bottomLeft,
+                padding: const EdgeInsets.only(left: 4, bottom: 2),
+                style: TextStyle(color: Colors.grey[300], fontSize: 10),
+                labelResolver: (line) => 'target ${line.y.round()}',
+              ),
+            ),
+        ]),
         rangeAnnotations: RangeAnnotations(
           horizontalRangeAnnotations: [
             HorizontalRangeAnnotation(
