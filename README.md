@@ -17,6 +17,9 @@ snaps, solo piano, strummed guitar or a lone bass line.
 
 - **Live tempo detection** from the mic, with a confidence light so you know
   when to trust the number.
+- **Free-running mode** — no setlist, no target: a full-screen tempo graph
+  that leans toward the most common tempos.
+- **Landscape layout** — graph on the left, controls on the right.
 - **Drift warning** — the tempo turns amber or red, with ▲ rushing / ▼
   dragging, when the band moves away from the song's tempo.
 - **Tempo history graph** — see if you're rushing or dragging over the course
@@ -35,6 +38,20 @@ snaps, solo piano, strummed guitar or a lone bass line.
 
 On first launch, allow microphone access. The app starts listening right away
 (the 🎤 icon in the top bar turns listening on and off).
+
+The top bar shows the current playlist's name. Tap the **SCBeatWiz logo**
+(top left) to open your playlists. Turn the phone sideways for a
+**landscape layout**: the graph on the left, the metronome and setlist on the
+right.
+
+### Free-running mode
+
+Tap **⤢** (next to the 🎤) to just listen, with no song or target tempo — for
+jams, rehearsing new material, or checking a recording. The graph fills the
+screen and the metronome and setlist controls are hidden. With no target to
+go on, the app leans toward the most common tempos (80–160 BPM, centred on
+120), so a groove that could be heard as 70 or 140 reads as 140. Tap **⤡** to
+go back, or change song (including with MIDI) to return to the setlist.
 
 ### The tempo graph (top half)
 
