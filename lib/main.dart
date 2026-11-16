@@ -120,6 +120,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   final TempoDetector _tempoDetector =
       TempoDetector(sampleRate: _sampleRate, priorOctaveWidth: 0.6);
   double _detectionConfidence = 0;
+  // Preferred tempo range: picks between half/double-time readings.
+  static const double _rangeLimitMin = 40;
+  static const double _rangeLimitMax = 220;
+  RangeValues _preferredRange = const RangeValues(90, 160);
 
   // MIDI
   final MidiCommand _midiCommand = MidiCommand();
@@ -155,6 +159,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   Future<void> _loadPlaylists() async {
     final prefs = await SharedPreferences.getInstance();
     final String? playlistsJson = prefs.getString('playlists');
+
+    final savedMin = prefs.getDouble('preferredMinBpm');
+    final savedMax = prefs.getDouble('preferredMaxBpm');
+    if (savedMin != null && savedMax != null) {
+      _setPreferredRange(RangeValues(
+        savedMin.clamp(_rangeLimitMin, _rangeLimitMax),
+        savedMax.clamp(_rangeLimitMin, _rangeLimitMax),
+      ));
+    }
     
     if (playlistsJson != null) {
       try {
@@ -180,6 +193,17 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final prefs = await SharedPreferences.getInstance();
     final String encodedList = jsonEncode(_playlists.map((p) => p.toJson()).toList());
     await prefs.setString('playlists', encodedList);
+  }
+
+  void _setPreferredRange(RangeValues values) {
+    setState(() => _preferredRange = values);
+    _tempoDetector.setPreferredRange(values.start, values.end);
+  }
+
+  Future<void> _savePreferredRange() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('preferredMinBpm', _preferredRange.start);
+    await prefs.setDouble('preferredMaxBpm', _preferredRange.end);
   }
 
   void _setupMetronome() {
@@ -478,7 +502,32 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     style: Theme.of(context).textTheme.titleLarge,
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text(
+                        'Prefer ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
+                        style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                      ),
+                      Expanded(
+                        child: RangeSlider(
+                          values: _preferredRange,
+                          min: _rangeLimitMin,
+                          max: _rangeLimitMax,
+                          divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
+                          labels: RangeLabels(
+                            '${_preferredRange.start.round()}',
+                            '${_preferredRange.end.round()}',
+                          ),
+                          onChanged: (v) {
+                            // Keep at least 10 BPM between handles.
+                            if (v.end - v.start < 10) return;
+                            _setPreferredRange(v);
+                          },
+                          onChangeEnd: (_) => _savePreferredRange(),
+                        ),
+                      ),
+                    ],
+                  ),
                   Expanded(
                     child: _bpmHistory.isEmpty
                         ? const Center(child: Text("Waiting for audio..."))
@@ -505,6 +554,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                               borderData: FlBorderData(show: true),
                               minY: 40,
                               maxY: 220,
+                              rangeAnnotations: RangeAnnotations(
+                                horizontalRangeAnnotations: [
+                                  HorizontalRangeAnnotation(
+                                    y1: _preferredRange.start,
+                                    y2: _preferredRange.end,
+                                    color: Theme.of(context).colorScheme.primary.withAlpha(25),
+                                  ),
+                                ],
+                              ),
                               minX: (_timeCounterMs / 1000.0) - _historyWindowSeconds,
                               maxX: _timeCounterMs / 1000.0,
                               lineBarsData: [
