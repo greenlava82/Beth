@@ -1086,6 +1086,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         spot.x.isNaN ? spot : FlSpot(spot.x - now, spot.y),
     ];
     return LineChart(
+      // No tween between updates: the graph changes ~3 times a second, and
+      // the default 150 ms animation made the whole screen redraw ~30 times
+      // a second (most of the app's battery use while listening).
+      duration: Duration.zero,
       LineChartData(
         gridData: FlGridData(
           show: true,
