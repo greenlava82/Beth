@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/branding/icon.png" alt="SCBeatWiz icon" width="128">
+</p>
+
 # SCBeatWiz
 
 **A setlist metronome that listens.** SCBeatWiz counts your band in at each
@@ -150,6 +154,17 @@ The tempo detector tests synthesize audio (drums, snaps, piano chords and
 arpeggios, guitar strums, legato bass, swing, 3/4, a tempo change, noise and
 silence) and check the detected BPM, so detector changes can be verified
 without a device.
+
+### Icon and splash screen
+
+The icon and splash artwork are drawn in code, so they can be tweaked and
+regenerated for every platform:
+
+```bash
+flutter test tool/render_branding_test.dart   # writes assets/branding/*.png
+dart run flutter_launcher_icons               # app icons (flutter_launcher_icons.yaml)
+dart run flutter_native_splash:create         # splash screens (flutter_native_splash.yaml)
+```
 
 ### Project layout
 
