@@ -91,6 +91,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   final TempoLock _tempoLock = TempoLock();
   // How far the heard tempo is from the song's target (null = no reading).
   final TempoDriftTracker _driftTracker = TempoDriftTracker();
+  // Free-running mode: no song target; the detector leans toward the most
+  // common tempos and the graph fills the screen.
+  bool _freeRunning = false;
+  static const double _commonTempoBpm = 120;
+  static const RangeValues _commonTempoRange = RangeValues(80, 160);
   TempoDrift? _drift;
   // Preferred tempo range: picks between half/double-time readings.
   static const double _rangeLimitMin = 40;
@@ -291,8 +296,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
 
     final targetBpm = playlist.items[_currentSetlistIndex].bpm;
-    _tempoDetector.expectedBpm = targetBpm.toDouble();
-    _centerPreferredRangeOn(targetBpm.toDouble());
+    if (!_freeRunning) {
+      _tempoDetector.expectedBpm = targetBpm.toDouble();
+      _centerPreferredRangeOn(targetBpm.toDouble());
+    }
     final msPerBeat = (60000 / targetBpm).round();
     _metronomeController.duration = Duration(milliseconds: msPerBeat);
     if (_isMetronomePlaying) {
@@ -420,12 +427,33 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     });
   }
 
+  /// Switch free-running mode on or off. On: stop the metronome and the
+  /// count-in lock, drop the song target, and weight detection toward the
+  /// most common tempos. Off: back to the current song's target and range.
+  void _setFreeRunning(bool on) {
+    setState(() {
+      _freeRunning = on;
+      _driftTracker.reset();
+      _drift = null;
+      if (on) {
+        _tempoLock.disarm();
+        _isMetronomePlaying = false;
+        _tempoDetector.expectedBpm = _commonTempoBpm;
+        _tempoDetector.setPreferredRange(
+            _commonTempoRange.start, _commonTempoRange.end);
+      }
+      _updateMetronomeTempo();
+    });
+  }
+
   /// Move to song [index] of the current playlist and start its count-in:
   /// the metronome starts on beat 1, the detector listens afresh, and the
   /// metronome pauses once the band locks onto the song's marking.
   void _goToSong(int index) {
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty) return;
+    // Picking a song means playing to its target again.
+    if (_freeRunning) _setFreeRunning(false);
     setState(() {
       _currentSetlistIndex = index.clamp(0, playlist.items.length - 1);
       _isMetronomePlaying = true;
@@ -592,7 +620,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _currentCalculatedBpm =
           (now == null || now.confidence < _minDisplayConfidence) ? 0 : now.bpm;
       final playlist = _playlists[_currentPlaylistIndex];
-      _drift = playlist.items.isEmpty
+      _drift = playlist.items.isEmpty || _freeRunning
           ? null
           : _driftTracker.update(_currentCalculatedBpm,
               playlist.items[_currentSetlistIndex].bpm.toDouble(),
@@ -997,9 +1025,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   /// BPM axis range fitted to the readings currently on screen, with
   /// headroom on top for the tempo readout. Returns (minY, maxY, step).
   /// The current song's BPM, or null with an empty playlist.
+  /// The range the detector currently favours (shaded on the graph).
+  RangeValues get _bandRange => _freeRunning ? _commonTempoRange : _preferredRange;
+
   double? get _currentTargetBpm {
     final playlist = _playlists[_currentPlaylistIndex];
-    if (playlist.items.isEmpty) return null;
+    if (playlist.items.isEmpty || _freeRunning) return null;
     return playlist.items[_currentSetlistIndex].bpm.toDouble();
   }
 
@@ -1132,8 +1163,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             // the band to the visible BPM range or it spills over the slider
             // and the controls when the preferred range is wider.
             HorizontalRangeAnnotation(
-              y1: _preferredRange.start.clamp(minY, maxY),
-              y2: _preferredRange.end.clamp(minY, maxY),
+              y1: _bandRange.start.clamp(minY, maxY),
+              y2: _bandRange.end.clamp(minY, maxY),
               color: colors.primary.withAlpha(25),
             ),
           ],
@@ -1332,8 +1363,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             icon: Image.asset('assets/branding/splash.png', height: 40),
           ),
         ),
-        title: Text(playlist.name, overflow: TextOverflow.ellipsis),
+        title: Text(_freeRunning ? 'Free running' : playlist.name,
+            overflow: TextOverflow.ellipsis),
         actions: [
+          IconButton(
+            tooltip: _freeRunning ? 'Back to setlist' : 'Free-running mode',
+            icon: Icon(_freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
+            onPressed: () => _setFreeRunning(!_freeRunning),
+          ),
           IconButton(
             icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),
             color: _isRecording ? Colors.redAccent : Colors.grey,
@@ -1359,29 +1396,32 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       // this also keeps clear of the camera cut-out).
       body: SafeArea(
         top: false,
-        child: MediaQuery.orientationOf(context) == Orientation.landscape
-            // Landscape: graph on the left, metronome and setlist on the right.
-            ? Row(
-                children: [
-                  Expanded(child: _buildGraphSection(context)),
-                  const VerticalDivider(width: 1, thickness: 2),
-                  Expanded(
-                    child: _buildControlsSection(context, playlist, currentItem,
-                        landscape: true),
+        child: _freeRunning
+            // Free-running: just the graph, full screen, either orientation.
+            ? _buildGraphSection(context)
+            : MediaQuery.orientationOf(context) == Orientation.landscape
+                // Landscape: graph on the left, metronome and setlist on the right.
+                ? Row(
+                    children: [
+                      Expanded(child: _buildGraphSection(context)),
+                      const VerticalDivider(width: 1, thickness: 2),
+                      Expanded(
+                        child: _buildControlsSection(context, playlist, currentItem,
+                            landscape: true),
+                      ),
+                    ],
+                  )
+                // Portrait: graph above, metronome and setlist below.
+                : Column(
+                    children: [
+                      Expanded(flex: 2, child: _buildGraphSection(context)),
+                      const Divider(height: 1, thickness: 2),
+                      Expanded(
+                        flex: 3,
+                        child: _buildControlsSection(context, playlist, currentItem),
+                      ),
+                    ],
                   ),
-                ],
-              )
-            // Portrait: graph above, metronome and setlist below.
-            : Column(
-                children: [
-                  Expanded(flex: 2, child: _buildGraphSection(context)),
-                  const Divider(height: 1, thickness: 2),
-                  Expanded(
-                    flex: 3,
-                    child: _buildControlsSection(context, playlist, currentItem),
-                  ),
-                ],
-              ),
       ),
     );
   }
@@ -1394,32 +1434,35 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Text(
-                'Prefer ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
-                style: TextStyle(color: Colors.grey[400], fontSize: 12),
-              ),
-              Expanded(
-                child: RangeSlider(
-                  values: _preferredRange,
-                  min: _rangeLimitMin,
-                  max: _rangeLimitMax,
-                  divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
-                  labels: RangeLabels(
-                    '${_preferredRange.start.round()}',
-                    '${_preferredRange.end.round()}',
-                  ),
-                  onChanged: (v) {
-                    // Keep at least 10 BPM between handles.
-                    if (v.end - v.start < 10) return;
-                    _setPreferredRange(v);
-                  },
-                  onChangeEnd: (_) => _savePreferredRange(),
+          // The preferred-range slider is for setlist mode; free-running
+          // uses the common-tempo range.
+          if (!_freeRunning)
+            Row(
+              children: [
+                Text(
+                  'Prefer ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
                 ),
-              ),
-            ],
-          ),
+                Expanded(
+                  child: RangeSlider(
+                    values: _preferredRange,
+                    min: _rangeLimitMin,
+                    max: _rangeLimitMax,
+                    divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
+                    labels: RangeLabels(
+                      '${_preferredRange.start.round()}',
+                      '${_preferredRange.end.round()}',
+                    ),
+                    onChanged: (v) {
+                      // Keep at least 10 BPM between handles.
+                      if (v.end - v.start < 10) return;
+                      _setPreferredRange(v);
+                    },
+                    onChangeEnd: (_) => _savePreferredRange(),
+                  ),
+                ),
+              ],
+            ),
           Expanded(
             child: Stack(
               children: [
