@@ -1,0 +1,28 @@
+# App icons, generated from assets/branding (see tool/render_branding_test.dart).
+# Regenerate with: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/branding/icon.png"
+
+  android: "ic_launcher"
+  adaptive_icon_background: "#1E1846"
+  adaptive_icon_foreground: "assets/branding/icon_foreground.png"
+  adaptive_icon_monochrome: "assets/branding/icon_monochrome.png"
+  min_sdk_android: 21
+
+  ios: true
+  remove_alpha_ios: true
+
+  macos:
+    generate: true
+    image_path: "assets/branding/icon.png"
+
+  web:
+    generate: true
+    image_path: "assets/branding/icon.png"
+    background_color: "#1E1846"
+    theme_color: "#1E1846"
+
+  windows:
+    generate: true
+    image_path: "assets/branding/icon.png"
+    icon_size: 256
