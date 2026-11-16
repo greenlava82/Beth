@@ -548,7 +548,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     return (minY, maxY, step);
   }
 
-  static String _formatElapsed(double seconds) {
+  static String _formatAgo(double seconds) {
     final s = seconds.round();
     return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
   }
@@ -558,10 +558,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final now = _timeCounterMs / 1000.0;
     final window = _chartWindowSeconds();
     final labelInterval = window <= 60 ? 10.0 : (window <= 150 ? 30.0 : 60.0);
-    // During the first 30 s, anchor at 0:00 so the line grows rightward.
-    final minX = math.max(0.0, now - window);
-    final maxX = math.max(now, window);
-    final (minY, maxY, yStep) = _chartYRange(minX);
+    final (minY, maxY, yStep) = _chartYRange(now - window);
+    // Plot against "seconds ago" (now = 0, past is negative) so ticks land
+    // on round ages: 4:00, 3:00, 2:00, 1:00, now.
+    final spots = [
+      for (final spot in _bpmHistory)
+        spot.x.isNaN ? spot : FlSpot(spot.x - now, spot.y),
+    ];
     return LineChart(
       LineChartData(
         gridData: FlGridData(
@@ -576,14 +579,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               reservedSize: 24,
               interval: labelInterval,
               getTitlesWidget: (value, meta) {
-                // Skip the clipped labels fl_chart adds at the edges.
-                if (value == meta.min || value == meta.max || value < 0) {
+                // fl_chart also labels the window edges; skip them unless
+                // they fall on a round age.
+                if (value.round() % labelInterval.round() != 0) {
                   return const SizedBox.shrink();
                 }
                 return SideTitleWidget(
                   meta: meta,
+                  fitInside: SideTitleFitInsideData.fromTitleMeta(meta),
                   child: Text(
-                    _formatElapsed(value),
+                    value == 0 ? 'now' : _formatAgo(-value),
                     style: TextStyle(color: Colors.grey[500], fontSize: 10),
                   ),
                 );
@@ -624,12 +629,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             ),
           ],
         ),
-        minX: minX,
-        maxX: maxX,
+        minX: -window,
+        maxX: 0,
         clipData: const FlClipData.all(),
         lineBarsData: [
           LineChartBarData(
-            spots: _bpmHistory,
+            spots: spots,
             isCurved: true,
             preventCurveOverShooting: true,
             color: colors.primary,
