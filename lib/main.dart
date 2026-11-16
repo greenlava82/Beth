@@ -16,16 +16,16 @@ import 'tempo_detector.dart';
 import 'tempo_lock.dart';
 
 void main() {
-  runApp(const BpmMetronomeApp());
+  runApp(const SCBeatWizApp());
 }
 
-class BpmMetronomeApp extends StatelessWidget {
-  const BpmMetronomeApp({super.key});
+class SCBeatWizApp extends StatelessWidget {
+  const SCBeatWizApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'BPM Metronome',
+      title: 'SC Beat Wizard',
       theme: ThemeData(
         brightness: Brightness.dark,
         primarySwatch: Colors.teal,
