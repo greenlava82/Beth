@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:fl_chart/fl_chart.dart';
@@ -450,14 +451,62 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Tempo graph
   // ==========================================================================
 
+  static const double _minChartWindowSeconds = 30;
+
+  /// Seconds of history the time axis shows: just the span that actually
+  /// has readings (at least 30 s, at most the full history window).
+  double _chartWindowSeconds() {
+    final now = _timeCounterMs / 1000.0;
+    for (final spot in _bpmHistory) {
+      if (!spot.x.isNaN) {
+        return (now - spot.x)
+            .clamp(_minChartWindowSeconds, _historyWindowSeconds)
+            .toDouble();
+      }
+    }
+    return _minChartWindowSeconds;
+  }
+
+  static String _formatElapsed(double seconds) {
+    final s = seconds.round();
+    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+  }
+
   Widget _buildTempoChart(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final now = _timeCounterMs / 1000.0;
+    final window = _chartWindowSeconds();
+    final labelInterval = window <= 60 ? 10.0 : (window <= 150 ? 30.0 : 60.0);
+    // During the first 30 s, anchor at 0:00 so the line grows rightward.
+    final minX = math.max(0.0, now - window);
+    final maxX = math.max(now, window);
     return LineChart(
       LineChartData(
-        gridData: const FlGridData(show: true),
+        gridData: FlGridData(
+          show: true,
+          verticalInterval: labelInterval,
+        ),
         titlesData: FlTitlesData(
-          bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 24,
+              interval: labelInterval,
+              getTitlesWidget: (value, meta) {
+                // Skip the clipped labels fl_chart adds at the edges.
+                if (value == meta.min || value == meta.max || value < 0) {
+                  return const SizedBox.shrink();
+                }
+                return SideTitleWidget(
+                  meta: meta,
+                  child: Text(
+                    _formatElapsed(value),
+                    style: TextStyle(color: Colors.grey[500], fontSize: 10),
+                  ),
+                );
+              },
+            ),
+          ),
           leftTitles: const AxisTitles(
             sideTitles: SideTitles(showTitles: true, reservedSize: 40),
           ),
@@ -476,8 +525,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             ),
           ],
         ),
-        minX: now - _historyWindowSeconds,
-        maxX: now,
+        minX: minX,
+        maxX: maxX,
+        clipData: const FlClipData.all(),
         lineBarsData: [
           LineChartBarData(
             spots: _bpmHistory,
@@ -673,7 +723,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                         ),
                         // Confidence light along the bottom of the plot.
                         Positioned(
-                          bottom: 8,
+                          bottom: 30, // just above the time labels
                           left: 40,
                           right: 0,
                           child: IgnorePointer(
