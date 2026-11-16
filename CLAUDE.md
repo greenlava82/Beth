@@ -35,7 +35,11 @@ maintained.
   metronome can auto-pause.
 - `test/tempo_detector_test.dart` — synthesizes audio (drums, snaps, piano,
   guitar, legato bass, swing, 3/4, tempo change, noise) and checks detection.
+- `lib/tempo_drift.dart` — `TempoDriftTracker`: on tempo (±2%) / drifting
+  (2–5%) / off (>5%) vs the song's BPM, with 1% hysteresis and half/double-time
+  handling; drives the readout colour and rushing/dragging badge. Pure Dart.
 - `test/tempo_lock_test.dart` — unit tests for `TempoLock`.
+- `test/tempo_drift_test.dart` — unit tests for `TempoDriftTracker`.
 - `test/playlist_test.dart`, `test/playlist_text_test.dart` — model, JSON
   compatibility, durations, and share/import format tests.
 - `test/widget_test.dart` — app smoke test.
@@ -108,7 +112,8 @@ Notes:
 
 ## Making changes
 
-- Detection logic belongs in `tempo_detector.dart` / `tempo_lock.dart`, and
+- Detection logic belongs in `tempo_detector.dart` / `tempo_lock.dart` /
+  `tempo_drift.dart`, and
   playlist data/format logic in `playlist.dart` / `playlist_text.dart` — not
   `main.dart` — and must come with tests. Keep those files free of Flutter
   imports so they stay fast to unit-test.
