@@ -54,6 +54,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Visual Metronome
   late AnimationController _metronomeController;
   late Animation<double> _pulseAnimation;
+  // Which beat of the bar the metronome is on (0 = downbeat).
+  int _beatIndex = 0;
+  double _lastPulseValue = 0;
   bool _isMetronomePlaying = false;
 
   // Audio Recording & BPM Detection
@@ -241,7 +244,21 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         curve: Curves.easeOut,
       ),
     );
+    // Each wrap of the repeating controller is one beat.
+    _metronomeController.addListener(() {
+      final v = _metronomeController.value;
+      if (v < _lastPulseValue) {
+        _beatIndex = (_beatIndex + 1) % _currentBeatsPerBar;
+      }
+      _lastPulseValue = v;
+    });
     _updateMetronomeTempo();
+  }
+
+  int get _currentBeatsPerBar {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return 4;
+    return playlist.items[_currentSetlistIndex].beatsPerBar;
   }
 
   void _updateMetronomeTempo() {
@@ -269,7 +286,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     } else {
       _metronomeController.stop();
       _metronomeController.reset();
+      _beatIndex = 0;
+      _lastPulseValue = 0;
     }
+    if (_beatIndex >= _currentBeatsPerBar) _beatIndex = 0;
   }
 
   static const int _minSongBpm = 30;
@@ -316,6 +336,29 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           onPressed: () => _setSongBpm(song, previous),
         ),
       ));
+  }
+
+  Widget _buildBeatDots(BuildContext context, Playlist playlist) {
+    final colors = Theme.of(context).colorScheme;
+    final n = _currentBeatsPerBar;
+    final playing = _isMetronomePlaying && playlist.items.isNotEmpty;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < n; i++)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: i == 0 ? 10 : 8,
+            height: i == 0 ? 10 : 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: playing && i == _beatIndex
+                  ? (i == 0 ? colors.primary : colors.secondary)
+                  : Colors.grey.withAlpha(70),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildNudgeColumn(Playlist playlist, List<int> deltas) {
@@ -951,7 +994,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: _isMetronomePlaying && playlist.items.isNotEmpty
-                                        ? Theme.of(context).colorScheme.secondary.withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
+                                        ? (_beatIndex == 0
+                                                    // Downbeat: brighter accent colour.
+                                                    ? Theme.of(context).colorScheme.primary
+                                                    : Theme.of(context).colorScheme.secondary)
+                                                .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
                                         : Theme.of(context).colorScheme.surfaceContainerHighest,
                                     boxShadow: [
                                       if (_isMetronomePlaying && playlist.items.isNotEmpty)
@@ -996,7 +1043,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       ],
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
+                    // Beats in the bar; the lit dot is the current beat.
+                    AnimatedBuilder(
+                      animation: _pulseAnimation,
+                      builder: (context, _) => _buildBeatDots(context, playlist),
+                    ),
+                    const SizedBox(height: 12),
 
                     // Capture the heard tempo
                     FilledButton.tonalIcon(
@@ -1027,6 +1080,30 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       style: Theme.of(context).textTheme.headlineSmall,
                       textAlign: TextAlign.center,
                     ),
+                    if (playlist.items.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          currentItem.timeSignature,
+                          if (currentItem.durationSeconds != null)
+                            formatDuration(currentItem.durationSeconds!),
+                        ].join('  ·  '),
+                        style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                      ),
+                      if (currentItem.notes.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          currentItem.notes,
+                          textAlign: TextAlign.center,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.grey[300],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ],
                     
                     const SizedBox(height: 32),
                     
@@ -1111,7 +1188,19 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                 return ListTile(
                   key: ValueKey('${song.name}_${song.bpm}_$index'),
                   title: Text(song.name),
-                  subtitle: Text('${song.bpm} BPM'),
+                  subtitle: Text(
+                    [
+                      [
+                        '${song.bpm} BPM',
+                        song.timeSignature,
+                        if (song.durationSeconds != null)
+                          formatDuration(song.durationSeconds!),
+                      ].join(' · '),
+                      if (song.notes.isNotEmpty) song.notes.split('\n').first,
+                    ].join('\n'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1181,54 +1270,119 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
 
   void _showSongDialog(int? index, SetlistItem? currentSong) {
     final nameController = TextEditingController(text: currentSong?.name ?? '');
-    final bpmController = TextEditingController(text: currentSong?.bpm.toString() ?? '120');
+    final bpmController =
+        TextEditingController(text: currentSong?.bpm.toString() ?? '120');
+    final durationController = TextEditingController(
+        text: currentSong?.durationSeconds == null
+            ? ''
+            : formatDuration(currentSong!.durationSeconds!));
+    final notesController = TextEditingController(text: currentSong?.notes ?? '');
+    var timeSignature = currentSong?.timeSignature ?? '4/4';
+    String? durationError;
 
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text(currentSong == null ? 'Add Song' : 'Edit Song'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                decoration: const InputDecoration(labelText: 'Song Name'),
-                controller: nameController,
-                autofocus: true,
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(currentSong == null ? 'Add Song' : 'Edit Song'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    decoration: const InputDecoration(labelText: 'Song Name'),
+                    controller: nameController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          decoration: const InputDecoration(labelText: 'BPM'),
+                          keyboardType: TextInputType.number,
+                          controller: bpmController,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: timeSignature,
+                          decoration: const InputDecoration(labelText: 'Time'),
+                          items: [
+                            for (final ts in timeSignatures)
+                              DropdownMenuItem(value: ts, child: Text(ts)),
+                          ],
+                          onChanged: (v) => timeSignature = v ?? timeSignature,
+                        ),
+                      ),
+                    ],
+                  ),
+                  TextField(
+                    decoration: InputDecoration(
+                      labelText: 'Length (optional)',
+                      hintText: 'm:ss',
+                      errorText: durationError,
+                    ),
+                    keyboardType: TextInputType.datetime,
+                    controller: durationController,
+                  ),
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Notes (optional)',
+                      hintText: 'Key, cues, who starts…',
+                    ),
+                    controller: notesController,
+                    minLines: 1,
+                    maxLines: 4,
+                    textCapitalization: TextCapitalization.sentences,
+                  ),
+                ],
               ),
-              TextField(
-                decoration: const InputDecoration(labelText: 'BPM'),
-                keyboardType: TextInputType.number,
-                controller: bpmController,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final durationText = durationController.text.trim();
+                  final duration = parseDuration(durationText);
+                  if (durationText.isNotEmpty && duration == null) {
+                    setDialogState(() => durationError = 'Use m:ss, e.g. 3:45');
+                    return;
+                  }
+                  final bpm = (int.tryParse(bpmController.text.trim()) ?? 120)
+                      .clamp(30, 300);
+                  var name = nameController.text.trim();
+                  if (name.isEmpty) name = 'Unnamed Song';
+                  final notes = notesController.text.trim();
+
+                  setState(() {
+                    if (currentSong == null) {
+                      widget.playlist.items.add(SetlistItem(name, bpm,
+                          timeSignature: timeSignature,
+                          notes: notes,
+                          durationSeconds: duration));
+                    } else {
+                      currentSong
+                        ..name = name
+                        ..bpm = bpm
+                        ..timeSignature = timeSignature
+                        ..notes = notes
+                        ..durationSeconds = duration;
+                    }
+                    widget.onChanged();
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Save'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                final bpm = int.tryParse(bpmController.text) ?? 120;
-                var name = nameController.text.trim();
-                if (name.isEmpty) name = 'Unnamed Song';
-
-                setState(() {
-                  if (currentSong == null) {
-                    widget.playlist.items.add(SetlistItem(name, bpm));
-                  } else {
-                    currentSong.name = name;
-                    currentSong.bpm = bpm;
-                  }
-                  widget.onChanged();
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
+          );
+        });
       },
     );
   }
