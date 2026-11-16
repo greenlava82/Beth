@@ -990,41 +990,60 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       children: [
                         _buildNudgeColumn(playlist, const [-1, -5]),
                         const SizedBox(width: 16),
-                        AnimatedBuilder(
-                          animation: _pulseAnimation,
-                          builder: (context, child) {
-                            return Container(
-                              width: 150,
-                              height: 150,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _isMetronomePlaying && playlist.items.isNotEmpty
-                                    ? Theme.of(context).colorScheme.secondary.withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
-                                    : Theme.of(context).colorScheme.surfaceContainerHighest,
-                                boxShadow: [
-                                  if (_isMetronomePlaying && playlist.items.isNotEmpty)
-                                    BoxShadow(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .secondary
-                                          .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
-                                      blurRadius: 30,
-                                      spreadRadius: 10,
-                                    ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${currentItem.bpm}',
-                                  style: const TextStyle(
-                                    fontSize: 48,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                        // The circle is also the play/stop button.
+                        Semantics(
+                          button: true,
+                          label: _isMetronomePlaying ? 'Stop metronome' : 'Start metronome',
+                          child: GestureDetector(
+                            onTap: playlist.items.isEmpty ? null : _toggleMetronome,
+                            child: AnimatedBuilder(
+                              animation: _pulseAnimation,
+                              builder: (context, child) {
+                                return Container(
+                                  width: 150,
+                                  height: 150,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _isMetronomePlaying && playlist.items.isNotEmpty
+                                        ? Theme.of(context).colorScheme.secondary.withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
+                                        : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    boxShadow: [
+                                      if (_isMetronomePlaying && playlist.items.isNotEmpty)
+                                        BoxShadow(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .secondary
+                                              .withAlpha(((0.5 * (1.0 - _pulseAnimation.value)) * 255).toInt()),
+                                          blurRadius: 30,
+                                          spreadRadius: 10,
+                                        ),
+                                    ],
                                   ),
-                                ),
-                              ),
-                            );
-                          },
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      // Spacer matching the icon below keeps the
+                                      // number centred in the circle.
+                                      const SizedBox(height: 28),
+                                      Text(
+                                        '${currentItem.bpm}',
+                                        style: const TextStyle(
+                                          fontSize: 48,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      Icon(
+                                        _isMetronomePlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                                        size: 28,
+                                        color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 16),
                         _buildNudgeColumn(playlist, const [1, 5]),
@@ -1033,27 +1052,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
                     const SizedBox(height: 16),
 
-                    // Play/stop and capture
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        IconButton(
-                          iconSize: 32,
-                          icon: Icon(_isMetronomePlaying ? Icons.stop_circle_outlined : Icons.play_circle_fill),
-                          color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
-                          onPressed: playlist.items.isEmpty ? null : _toggleMetronome,
-                        ),
-                        const SizedBox(width: 12),
-                        FilledButton.tonalIcon(
-                          onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
-                              ? null
-                              : _captureDetectedBpm,
-                          icon: const Icon(Icons.hearing),
-                          label: Text(_currentCalculatedBpm > 0
-                              ? 'Capture ${_currentCalculatedBpm.round()}'
-                              : 'Capture'),
-                        ),
-                      ],
+                    // Capture the heard tempo
+                    FilledButton.tonalIcon(
+                      onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
+                          ? null
+                          : _captureDetectedBpm,
+                      icon: const Icon(Icons.hearing),
+                      label: Text(_currentCalculatedBpm > 0
+                          ? 'Capture ${_currentCalculatedBpm.round()}'
+                          : 'Capture'),
                     ),
 
                     const SizedBox(height: 24),
