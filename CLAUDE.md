@@ -74,6 +74,26 @@ Notes:
 - Adding a plugin regenerates `macos/Flutter/GeneratedPluginRegistrant.swift`;
   commit it with the dependency change.
 
+## Branding (icon and splash)
+
+- Source of truth is `tool/render_branding_test.dart`, which draws the mark
+  with Flutter's canvas into `assets/branding/*.png` (no image tools needed).
+  Colours: background `#1E1846`, lavender `#CFBCFF`, amber `#FFD180`.
+- Regenerate in order:
+  `flutter test tool/render_branding_test.dart`, then
+  `dart run flutter_launcher_icons`, then `dart run flutter_native_splash:create`.
+- After regenerating, review the diff before committing:
+  - `flutter_launcher_icons` sets
+    `ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = AppIcon` in
+    `ios/Runner.xcodeproj/project.pbxproj` (a known bug) — revert it.
+  - `flutter_native_splash` reformats `ios/Runner/Info.plist`; keep the
+    original formatting and only its `UIStatusBarHidden` key.
+  - The Android adaptive foreground gets an extra 16% inset from the
+    generator; the render script draws it larger to compensate.
+- To see the Android 12+ splash icon when launching from adb, use
+  `adb shell am start --splashscreen-show-icon -n …` (shell launches
+  otherwise show a plain background).
+
 ## Making changes
 
 - Detection logic belongs in `tempo_detector.dart` / `tempo_lock.dart`, not

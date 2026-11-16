@@ -1,0 +1,16 @@
+# Native splash screen, generated from assets/branding
+# (see tool/render_branding_test.dart).
+# Regenerate with: dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#1E1846"
+  image: assets/branding/splash.png
+
+  # Android 12+ always shows the app icon area in a circle; use a mark sized
+  # for that circle on the same background.
+  android_12:
+    image: assets/branding/splash_android12.png
+    color: "#1E1846"
+
+  android: true
+  ios: true
+  web: true
