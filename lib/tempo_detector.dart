@@ -372,8 +372,14 @@ class TempoDetector {
     double rawMax = 0;
     for (var j = 0; j < g; j++) {
       final b = _grid[j];
+      // Credit for being double a slower pulse — unless that slower pulse
+      // is really a bar of three: then there's also a strong pulse at 1.5x
+      // this candidate (e.g. a 150 BPM waltz has bars at 50, and 100 would
+      // otherwise borrow their strength).
+      final half = combAt(b / 2);
+      final halfFold = combAt(b * 1.5) > 0.6 * half ? 0.0 : half;
       raw[j] = math.max(combAt(b),
-          _octaveFold * math.max(combAt(b / 2), combAt(b * 2)));
+          _octaveFold * math.max(halfFold, combAt(b * 2)));
       if (raw[j] > rawMax) rawMax = raw[j];
     }
 

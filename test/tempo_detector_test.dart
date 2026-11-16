@@ -368,6 +368,27 @@ void main() {
     expect(d.preferredMaxBpm, 160);
   });
 
+  // Free-running mode in the app: no song target, so lean toward the most
+  // common tempos (prefer 80-160, gentle pull toward 120).
+  group('free-running (common tempos, no target)', () {
+    for (final entry in cases.entries) {
+      test(entry.key, () {
+        final (make, bpm) = entry.value;
+        final e = run(make(),
+            expected: 120, priorWidth: 0.6, rangeMin: 80, rangeMax: 160);
+        // ignore: avoid_print
+        print('${entry.key.padRight(26)} -> $e');
+        final octaveOk = ok(e, bpm) || ok(e, bpm * 2) || ok(e, bpm / 2);
+        expect(octaveOk, isTrue, reason: '$e');
+        final inRange =
+            [bpm / 2, bpm, bpm * 2].where((b) => b >= 80 && b <= 160);
+        if (inRange.isNotEmpty) {
+          expect(e!.bpm, inInclusiveRange(78, 163), reason: '$e');
+        }
+      });
+    }
+  });
+
   test('tempo change 100 -> 130 is followed', () {
     final log = <TempoEstimate>[];
     final e = run(tempoChange(100, 130), log: log);
