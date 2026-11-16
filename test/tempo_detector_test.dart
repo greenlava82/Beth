@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:bpm_metronome/tempo_detector.dart';
+import 'package:scbeatwiz/tempo_detector.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const sr = 44100;

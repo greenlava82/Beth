@@ -1,5 +1,5 @@
-import 'package:bpm_metronome/tempo_detector.dart';
-import 'package:bpm_metronome/tempo_lock.dart';
+import 'package:scbeatwiz/tempo_detector.dart';
+import 'package:scbeatwiz/tempo_lock.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
