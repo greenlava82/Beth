@@ -47,7 +47,7 @@ class MetronomeScreen extends StatefulWidget {
 }
 
 class _MetronomeScreenState extends State<MetronomeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // Playlist State
   List<Playlist> _playlists = defaultPlaylists();
   int _currentPlaylistIndex = 0;
@@ -109,6 +109,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadPlaylists();
     _setupMetronome();
     _setupMidi();
@@ -608,6 +609,44 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
   }
 
+  void _stopRecording() {
+    _audioStreamSub?.cancel();
+    _audioStreamSub = null;
+    _audioRecorder.stop();
+    WakelockPlus.disable();
+    setState(() {
+      _isRecording = false;
+      _currentCalculatedBpm = 0;
+      _drift = null;
+    });
+  }
+
+  // True while listening is paused only because the app left the screen.
+  bool _pausedInBackground = false;
+
+  /// Stop listening when the app goes to the background or the screen locks
+  /// (Android silences the mic there anyway, so detection would just burn
+  /// battery on silence), and pick up again on return.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+        if (_isRecording) {
+          _pausedInBackground = true;
+          _stopRecording();
+        }
+      case AppLifecycleState.resumed:
+        if (_pausedInBackground) {
+          _pausedInBackground = false;
+          _startRecording();
+        }
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
   // Feed mic audio into the tempo detector; it emits a new estimate
   // roughly twice a second.
   void _processAudioBuffer(Uint8List data) {
@@ -642,6 +681,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _chartTimer?.cancel();
     _audioStreamSub?.cancel();
     _audioRecorder.dispose();
@@ -1086,6 +1126,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         spot.x.isNaN ? spot : FlSpot(spot.x - now, spot.y),
     ];
     return LineChart(
+      // No tween between updates: the graph changes ~3 times a second, and
+      // the default 150 ms animation made the whole screen redraw ~30 times
+      // a second (most of the app's battery use while listening).
+      duration: Duration.zero,
       LineChartData(
         gridData: FlGridData(
           show: true,
@@ -1376,14 +1420,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             color: _isRecording ? Colors.redAccent : Colors.grey,
             onPressed: () {
               if (_isRecording) {
-                _audioStreamSub?.cancel();
-                _audioRecorder.stop();
-                WakelockPlus.disable();
-                setState(() {
-                  _isRecording = false;
-                  _currentCalculatedBpm = 0;
-                  _drift = null;
-                });
+                _stopRecording();
               } else {
                 _startRecording();
               }

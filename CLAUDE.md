@@ -132,6 +132,13 @@ Notes:
   surrounding style by hand. Formatting new standalone files is fine.
 - Prefer verifying UI changes on a real device or emulator (screenshot) in
   addition to `flutter analyze`.
+- Battery: the app keeps the screen on for hours, so avoid redrawing when
+  nothing changes. Keep fl_chart's implicit animation off (`duration:
+  Duration.zero`); a tween per update made the whole screen redraw ~30 times
+  a second. Listening pauses in the background via
+  `didChangeAppLifecycleState`. To measure, use a release build and
+  `adb shell top -H -p <pid>` (the `N.raster` thread is drawing) plus
+  `dumpsys SurfaceFlinger --latency '<app SurfaceView layer>'` for frames/s.
 
 ## Commits
 
