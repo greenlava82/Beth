@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -12,6 +11,7 @@ import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'playlist.dart';
 import 'tempo_detector.dart';
 import 'tempo_lock.dart';
 
@@ -36,46 +36,6 @@ class SCBeatWizApp extends StatelessWidget {
   }
 }
 
-class SetlistItem {
-  String name;
-  int bpm;
-
-  SetlistItem(this.name, this.bpm);
-
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'bpm': bpm,
-      };
-
-  factory SetlistItem.fromJson(Map<String, dynamic> json) {
-    return SetlistItem(
-      json['name'] as String,
-      json['bpm'] as int,
-    );
-  }
-}
-
-class Playlist {
-  String name;
-  List<SetlistItem> items;
-
-  Playlist(this.name, this.items);
-
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'items': items.map((item) => item.toJson()).toList(),
-      };
-
-  factory Playlist.fromJson(Map<String, dynamic> json) {
-    return Playlist(
-      json['name'] as String,
-      (json['items'] as List<dynamic>)
-          .map((item) => SetlistItem.fromJson(item as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-}
-
 class MetronomeScreen extends StatefulWidget {
   const MetronomeScreen({super.key});
 
@@ -86,14 +46,7 @@ class MetronomeScreen extends StatefulWidget {
 class _MetronomeScreenState extends State<MetronomeScreen>
     with SingleTickerProviderStateMixin {
   // Playlist State
-  List<Playlist> _playlists = [
-    Playlist('Default Setlist', [
-      SetlistItem('Song 1 (Slow)', 80),
-      SetlistItem('Song 2 (Upbeat)', 120),
-      SetlistItem('Song 3 (Fast)', 160),
-      SetlistItem('Song 4 (Groove)', 105),
-    ]),
-  ];
+  List<Playlist> _playlists = defaultPlaylists();
   int _currentPlaylistIndex = 0;
   int _currentSetlistIndex = 0;
   bool _isLoadingPlaylists = true;
@@ -181,18 +134,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       ));
     }
     
-    if (playlistsJson != null) {
-      try {
-        final List<dynamic> decodedList = jsonDecode(playlistsJson);
-        setState(() {
-          _playlists = decodedList
-              .map((item) => Playlist.fromJson(item as Map<String, dynamic>))
-              .toList();
-        });
-      } catch (e) {
-        // If decoding fails, fallback to default
-        debugPrint("Error loading playlists: \$e");
-      }
+    final saved = decodePlaylists(playlistsJson);
+    if (saved != null) {
+      setState(() => _playlists = saved);
+    } else if (playlistsJson != null) {
+      // Unreadable data: keep the defaults rather than crash.
+      debugPrint('Could not read saved playlists; using defaults');
     }
     
     setState(() {
@@ -203,8 +150,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   Future<void> _savePlaylists() async {
     final prefs = await SharedPreferences.getInstance();
-    final String encodedList = jsonEncode(_playlists.map((p) => p.toJson()).toList());
-    await prefs.setString('playlists', encodedList);
+    await prefs.setString('playlists', encodePlaylists(_playlists));
   }
 
   /// Slide the preferred range so it is centred (on a log scale, i.e. by
