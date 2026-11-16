@@ -7,13 +7,14 @@ import 'playlist.dart';
 /// Export writes one song per line:
 ///
 ///     # SCBeatWiz setlist: Friday Gig
-///     Superstition, 100, 4/4, 4:26 | Clav intro, horns on 2nd chorus
+///     Superstition, 100, 4:26
 ///     Valerie, 118
 ///
 /// Import is lenient so people can paste lists typed by hand:
 /// `Superstition - 100`, `1. Valerie, 118 bpm`, `120 Song name`, with or
-/// without a time signature (`3/4`) or length (`4:26`), and notes after
-/// ` | `. Lines starting with `#` are comments, except a
+/// without a length (`4:26`). A time signature (`3/4`) or notes after ` | `
+/// — written by older versions — are accepted and ignored. Lines starting
+/// with `#` are comments, except a
 /// `# Setlist: <name>` / `# Playlist: <name>` header, which names the
 /// playlist. JSON (a playlist object or a list of them, as stored by the
 /// app) is accepted too.
@@ -27,14 +28,9 @@ String playlistToText(Playlist playlist) {
     final parts = <String>[
       s.name.replaceAll(',', ' '), // keep the comma as the field separator
       '${s.bpm}',
-      if (s.timeSignature != '4/4' || s.durationSeconds != null)
-        s.timeSignature,
       if (s.durationSeconds != null) formatDuration(s.durationSeconds!),
     ];
     b.write(parts.join(', '));
-    if (s.notes.isNotEmpty) {
-      b.write(' | ${s.notes.replaceAll(RegExp(r'\s*\n\s*'), ' / ')}');
-    }
     b.write('\n');
   }
   return b.toString();
@@ -115,20 +111,14 @@ final _integer = RegExp(r'(?<![\w.:/])(\d{2,3})(?![\w.:/])');
 final _separators = RegExp(r'^[\s,;\-–—·|]+|[\s,;\-–—·|]+$');
 
 SetlistItem? _parseSongLine(String line) {
-  var notes = '';
+  // Notes after " | " (from older shares) are dropped.
   final bar = line.indexOf(' | ');
-  if (bar >= 0) {
-    notes = line.substring(bar + 3).trim().replaceAll(' / ', '\n');
-    line = line.substring(0, bar);
-  }
+  if (bar >= 0) line = line.substring(0, bar);
   line = line.replaceFirst(_numbering, '');
 
-  var timeSignature = '4/4';
-  final ts = _timeSig.firstMatch(line);
-  if (ts != null && timeSignatures.contains(ts[1])) {
-    timeSignature = ts[1]!;
-    line = line.replaceRange(ts.start, ts.end, ' ');
-  }
+  // A time signature (from older shares) is ignored, but must be removed so
+  // its digits aren't taken for the BPM.
+  line = line.replaceAll(_timeSig, ' ');
 
   int? durationSeconds;
   final dur = _duration.firstMatch(line);
@@ -158,7 +148,5 @@ SetlistItem? _parseSongLine(String line) {
       .trim();
 
   return SetlistItem(name.isEmpty ? 'Unnamed Song' : name, bpm,
-      timeSignature: timeSignature,
-      notes: notes,
       durationSeconds: durationSeconds);
 }

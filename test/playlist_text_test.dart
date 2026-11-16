@@ -12,33 +12,29 @@ void main() {
   group('export', () {
     test('writes header and one line per song', () {
       final text = playlistToText(Playlist('Friday Gig', [
-        SetlistItem('Superstition', 100,
-            durationSeconds: 266, notes: 'Clav intro\nHorns on 2nd chorus'),
+        SetlistItem('Superstition', 100, durationSeconds: 266),
         SetlistItem('Valerie', 118),
-        SetlistItem('Waltz, op. 2', 150, timeSignature: '3/4'),
+        SetlistItem('Waltz, op. 2', 150),
       ]));
       expect(
           text,
           '# SCBeatWiz setlist: Friday Gig\n'
-          'Superstition, 100, 4/4, 4:26 | Clav intro / Horns on 2nd chorus\n'
+          'Superstition, 100, 4:26\n'
           'Valerie, 118\n'
-          'Waltz  op. 2, 150, 3/4\n');
+          'Waltz  op. 2, 150\n');
     });
 
     test('round-trips through import', () {
       final original = Playlist('Set A', [
-        SetlistItem('Superstition', 100,
-            durationSeconds: 266, notes: 'Clav intro\nHorns'),
+        SetlistItem('Superstition', 100, durationSeconds: 266),
         SetlistItem('Valerie', 118),
-        SetlistItem('Waltz', 150, timeSignature: '3/4'),
       ]);
       final back = parsePlaylistText(playlistToText(original)).playlists.single;
       expect(back.name, 'Set A');
-      expect(back.items.map((s) => s.name), ['Superstition', 'Valerie', 'Waltz']);
-      expect(back.items.map((s) => s.bpm), [100, 118, 150]);
+      expect(back.items.map((s) => s.name), ['Superstition', 'Valerie']);
+      expect(back.items.map((s) => s.bpm), [100, 118]);
       expect(back.items[0].durationSeconds, 266);
-      expect(back.items[0].notes, 'Clav intro\nHorns');
-      expect(back.items[2].timeSignature, '3/4');
+      expect(back.items[1].durationSeconds, isNull);
     });
   });
 
@@ -67,12 +63,19 @@ void main() {
       expect([b.name, b.bpm], ['Summer of 69', 139]);
     });
 
-    test('time signature and length in any order', () {
+    test('length anywhere; a time signature is ignored', () {
       final s = one('Blue Rondo, 3:45, 9/8, 168');
       expect(s.name, 'Blue Rondo');
       expect(s.bpm, 168);
-      expect(s.timeSignature, '9/8');
       expect(s.durationSeconds, 225);
+      // "12/8" must not be mistaken for a BPM of 12 or the title.
+      final t = one('Tango, 12/8, 120');
+      expect([t.name, t.bpm], ['Tango', 120]);
+    });
+
+    test('notes after " | " (older shares) are dropped', () {
+      final s = one('Superstition, 100, 4/4, 4:26 | Clav intro / horns');
+      expect([s.name, s.bpm, s.durationSeconds], ['Superstition', 100, 266]);
     });
 
     test('header names the playlist; other comments ignored', () {
@@ -110,9 +113,10 @@ Song B, 120
     test('single playlist object', () {
       final r = parsePlaylistText(
           '{"name":"J","items":[{"name":"A","bpm":101,"timeSignature":"6/8"}]}');
+      // Older JSON with a time signature still imports (the field is ignored).
       final p = r.playlists.single;
       expect(p.name, 'J');
-      expect(p.items.single.timeSignature, '6/8');
+      expect(p.items.single.bpm, 101);
     });
 
     test('list of playlists, as stored by the app', () {

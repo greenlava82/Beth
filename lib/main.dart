@@ -501,7 +501,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       title: Text(song.name),
                       subtitle: Text([
                         '${song.bpm} BPM',
-                        song.timeSignature,
                         if (song.durationSeconds != null)
                           formatDuration(song.durationSeconds!),
                       ].join(' · ')),
@@ -1601,26 +1600,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               textAlign: TextAlign.center,
             ),
             if (playlist.items.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                [
-                  currentItem.timeSignature,
-                  if (currentItem.durationSeconds != null)
-                    formatDuration(currentItem.durationSeconds!),
-                ].join('  ·  '),
-                style: TextStyle(color: Colors.grey[400], fontSize: 13),
-              ),
-              if (currentItem.notes.isNotEmpty) ...[
-                const SizedBox(height: 6),
+              if (currentItem.durationSeconds != null) ...[
+                const SizedBox(height: 4),
                 Text(
-                  currentItem.notes,
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.grey[300],
-                    fontStyle: FontStyle.italic,
-                  ),
+                  formatDuration(currentItem.durationSeconds!),
+                  style: TextStyle(color: Colors.grey[400], fontSize: 13),
                 ),
               ],
               const SizedBox(height: 10),
@@ -1831,19 +1815,11 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                 return ListTile(
                   key: ValueKey('${song.name}_${song.bpm}_$index'),
                   title: Text(song.name),
-                  subtitle: Text(
-                    [
-                      [
-                        '${song.bpm} BPM',
-                        song.timeSignature,
-                        if (song.durationSeconds != null)
-                          formatDuration(song.durationSeconds!),
-                      ].join(' · '),
-                      if (song.notes.isNotEmpty) song.notes.split('\n').first,
-                    ].join('\n'),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  subtitle: Text([
+                    '${song.bpm} BPM',
+                    if (song.durationSeconds != null)
+                      formatDuration(song.durationSeconds!),
+                  ].join(' · ')),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1936,8 +1912,6 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
         text: currentSong?.durationSeconds == null
             ? ''
             : formatDuration(currentSong!.durationSeconds!));
-    final notesController = TextEditingController(text: currentSong?.notes ?? '');
-    var timeSignature = currentSong?.timeSignature ?? '4/4';
     String? durationError;
 
     showDialog(
@@ -1967,36 +1941,17 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: timeSignature,
-                          decoration: const InputDecoration(labelText: 'Time'),
-                          items: [
-                            for (final ts in timeSignatures)
-                              DropdownMenuItem(value: ts, child: Text(ts)),
-                          ],
-                          onChanged: (v) => timeSignature = v ?? timeSignature,
+                        child: TextField(
+                          decoration: InputDecoration(
+                            labelText: 'Length',
+                            hintText: 'm:ss, optional',
+                            errorText: durationError,
+                          ),
+                          keyboardType: TextInputType.datetime,
+                          controller: durationController,
                         ),
                       ),
                     ],
-                  ),
-                  TextField(
-                    decoration: InputDecoration(
-                      labelText: 'Length (optional)',
-                      hintText: 'm:ss',
-                      errorText: durationError,
-                    ),
-                    keyboardType: TextInputType.datetime,
-                    controller: durationController,
-                  ),
-                  TextField(
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
-                      hintText: 'Key, cues, who starts…',
-                    ),
-                    controller: notesController,
-                    minLines: 1,
-                    maxLines: 4,
-                    textCapitalization: TextCapitalization.sentences,
                   ),
                 ],
               ),
@@ -2018,20 +1973,15 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                       .clamp(30, 300);
                   var name = nameController.text.trim();
                   if (name.isEmpty) name = 'Unnamed Song';
-                  final notes = notesController.text.trim();
 
                   setState(() {
                     if (currentSong == null) {
-                      widget.playlist.items.add(SetlistItem(name, bpm,
-                          timeSignature: timeSignature,
-                          notes: notes,
-                          durationSeconds: duration));
+                      widget.playlist.items
+                          .add(SetlistItem(name, bpm, durationSeconds: duration));
                     } else {
                       currentSong
                         ..name = name
                         ..bpm = bpm
-                        ..timeSignature = timeSignature
-                        ..notes = notes
                         ..durationSeconds = duration;
                     }
                     widget.onChanged();
