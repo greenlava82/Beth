@@ -50,8 +50,15 @@ Changing their shape needs a migration or a tolerant loader; new song fields
 must default sensibly in `SetlistItem.fromJson` (see `playlist_test.dart`).
 
 All song changes go through `_goToSong()` (starts the count-in metronome on
-beat 1, resets the detector, arms `TempoLock`); playlist list changes go
-through `_changePlaylists()` (keeps the current playlist selected).
+beat 1, resets the detector, arms `TempoLock`, leaves free-running mode);
+playlist list changes go through `_changePlaylists()` (keeps the current
+playlist selected). `_setFreeRunning()` toggles free-running mode (no target:
+detector hint 120 BPM, preferred range 80–160, graph-only layout);
+`_updateMetronomeTempo()` must not retune the detector while it's on.
+
+The main screen is built from `_buildGraphSection()` and
+`_buildControlsSection()` (portrait: stacked; landscape: side by side;
+free-running: graph only). Check UI changes in both orientations.
 
 ## Build, run, test
 
