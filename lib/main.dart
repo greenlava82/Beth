@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:fl_chart/fl_chart.dart';
@@ -10,6 +9,8 @@ import 'package:flutter_midi_command/flutter_midi_command.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'tempo_detector.dart';
 
 void main() {
   runApp(const BpmMetronomeApp());
@@ -111,11 +112,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   Timer? _chartTimer;
   double _currentCalculatedBpm = 0;
 
-  // BPM Math State
-  final List<double> _energyHistory = [];
-  final List<int> _peakTimesMs = [];
-  int _audioSamplesProcessed = 0;
-  final int _sampleRate = 44100;
+  // Tempo detection
+  static const int _sampleRate = 44100;
+  static const double _minDisplayConfidence = 0.1;
+  // Tighter octave prior: the current song's BPM tells us whether the band
+  // is at 60 or 120, so lean on it for the half/double-time choice.
+  final TempoDetector _tempoDetector =
+      TempoDetector(sampleRate: _sampleRate, priorOctaveWidth: 0.6);
+  double _detectionConfidence = 0;
 
   // MIDI
   final MidiCommand _midiCommand = MidiCommand();
@@ -205,6 +209,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
 
     final targetBpm = playlist.items[_currentSetlistIndex].bpm;
+    _tempoDetector.expectedBpm = targetBpm.toDouble();
     final msPerBeat = (60000 / targetBpm).round();
     _metronomeController.duration = Duration(milliseconds: msPerBeat);
     if (_isMetronomePlaying) {
@@ -260,10 +265,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (await _audioRecorder.hasPermission()) {
       final stream = await _audioRecorder.startStream(const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
-        sampleRate: 44100,
+        sampleRate: _sampleRate,
         numChannels: 1,
       ));
 
+      _tempoDetector.reset();
       setState(() => _isRecording = true);
 
       _audioStreamSub = stream.listen((Uint8List data) {
@@ -272,75 +278,18 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
   }
 
+  // Feed mic audio into the tempo detector; it emits a new estimate
+  // roughly twice a second.
   void _processAudioBuffer(Uint8List data) {
-    // Convert bytes to 16-bit PCM
-    final Int16List pcmData = data.buffer.asInt16List();
-
-    // Calculate RMS energy of this chunk
-    double sumSquares = 0;
-    for (int i = 0; i < pcmData.length; i++) {
-      final sample = pcmData[i] / 32768.0; // Normalize
-      sumSquares += sample * sample;
-    }
-    final rms = math.sqrt(sumSquares / pcmData.length);
-
-    _energyHistory.add(rms);
-    if (_energyHistory.length > 50) {
-      // Keep a small rolling window of energy (approx ~2 seconds of chunks)
-      _energyHistory.removeAt(0);
-    }
-
-    _audioSamplesProcessed += pcmData.length;
-    final currentMs = (_audioSamplesProcessed / _sampleRate * 1000).round();
-
-    // Simple Peak Detection logic
-    if (_energyHistory.length > 3) {
-      final prevPrevRms = _energyHistory[_energyHistory.length - 4];
-      final prevRms = _energyHistory[_energyHistory.length - 3];
-      final currentRms = _energyHistory[_energyHistory.length - 2];
-      
-      // Calculate dynamic threshold
-      double mean = _energyHistory.reduce((a, b) => a + b) / _energyHistory.length;
-      double threshold = mean * 1.5 + 0.01; 
-
-      if (prevRms > threshold &&
-          prevRms > currentRms &&
-          prevRms > prevPrevRms) {
-        // We found a peak!
-        _peakTimesMs.add(currentMs);
-
-        // Keep last 10 seconds of peaks
-        _peakTimesMs.removeWhere((t) => currentMs - t > 10000);
-
-        _calculateBpmFromPeaks();
-      }
-    }
-  }
-
-  void _calculateBpmFromPeaks() {
-    if (_peakTimesMs.length < 4) return;
-
-    List<int> intervals = [];
-    for (int i = 1; i < _peakTimesMs.length; i++) {
-      intervals.add(_peakTimesMs[i] - _peakTimesMs[i - 1]);
-    }
-
-    // Filter reasonable beat intervals (40 to 220 BPM)
-    intervals = intervals
-        .where((interval) => interval >= 272 && interval <= 1500)
-        .toList();
-
-    if (intervals.isEmpty) return;
-
-    // Use median interval to avoid outliers
-    intervals.sort();
-    final medianInterval = intervals[intervals.length ~/ 2];
-    
-    final bpm = 60000 / medianInterval;
-    
-    if (bpm >= 40 && bpm <= 250) {
-       _currentCalculatedBpm = _currentCalculatedBpm * 0.7 + bpm * 0.3; // Smoothing
-    }
+    final before = _tempoDetector.current;
+    _tempoDetector.addPcm16(data);
+    final now = _tempoDetector.current;
+    if (identical(before, now)) return;
+    setState(() {
+      _detectionConfidence = now?.confidence ?? 0;
+      _currentCalculatedBpm =
+          (now == null || now.confidence < _minDisplayConfidence) ? 0 : now.bpm;
+    });
   }
 
   @override
@@ -498,7 +447,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             onPressed: () {
               if (_isRecording) {
                 _audioStreamSub?.cancel();
-                setState(() => _isRecording = false);
+                _audioRecorder.stop();
+                setState(() {
+                  _isRecording = false;
+                  _currentCalculatedBpm = 0;
+                });
               } else {
                 _startRecording();
               }
@@ -518,7 +471,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Detected Tempo: ${_currentCalculatedBpm.toStringAsFixed(1)} BPM',
+                    _currentCalculatedBpm > 0
+                        ? 'Detected Tempo: ${_currentCalculatedBpm.toStringAsFixed(1)} BPM'
+                            '  (${(_detectionConfidence * 100).round()}%)'
+                        : 'Detected Tempo: — listening…',
                     style: Theme.of(context).textTheme.titleLarge,
                     textAlign: TextAlign.center,
                   ),
