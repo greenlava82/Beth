@@ -609,6 +609,107 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     super.dispose();
   }
 
+  // ==========================================================================
+  // Playlist management
+  // ==========================================================================
+
+  void _openPlaylistEditor(Playlist playlist) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlaylistEditScreen(
+          playlist: playlist,
+          onChanged: () {
+            setState(_updateMetronomeTempo);
+            _savePlaylists();
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Run [change] on the playlist list while keeping the current playlist
+  /// (and song) selected, wherever it ends up.
+  void _changePlaylists(void Function() change) {
+    final current = _playlists[_currentPlaylistIndex];
+    setState(() {
+      change();
+      final i = _playlists.indexOf(current);
+      if (i >= 0) {
+        _currentPlaylistIndex = i;
+      } else {
+        // The current playlist went away: fall back to a neighbour.
+        _currentPlaylistIndex =
+            _currentPlaylistIndex.clamp(0, _playlists.length - 1);
+        _currentSetlistIndex = 0;
+      }
+      _updateMetronomeTempo();
+    });
+    _savePlaylists();
+  }
+
+  void _reorderPlaylists(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    _changePlaylists(() {
+      _playlists.insert(newIndex, _playlists.removeAt(oldIndex));
+    });
+  }
+
+  void _duplicatePlaylist(int index) {
+    final original = _playlists[index];
+    _changePlaylists(() {
+      // The copy appears right below the original in the open drawer.
+      _playlists.insert(index + 1, original.copy(name: '${original.name} (copy)'));
+    });
+  }
+
+  Future<void> _confirmDeletePlaylist(int index) async {
+    final playlist = _playlists[index];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete "${playlist.name}"?'),
+        content: Text('Its ${playlist.items.length} songs will be removed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    // Close the drawer so the Undo snackbar isn't hidden behind it.
+    Navigator.pop(context);
+
+    final wasCurrent = index == _currentPlaylistIndex;
+    final songIndex = _currentSetlistIndex;
+    _changePlaylists(() => _playlists.removeAt(index));
+    _showSnack('Deleted "${playlist.name}"', undo: () {
+      _changePlaylists(() => _playlists.insert(index, playlist));
+      if (wasCurrent) {
+        setState(() {
+          _currentPlaylistIndex = index;
+          _currentSetlistIndex = songIndex;
+          _updateMetronomeTempo();
+        });
+      }
+    });
+  }
+
+  void _showSnack(String message, {VoidCallback? undo}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        action: undo == null ? null : SnackBarAction(label: 'Undo', onPressed: undo),
+      ));
+  }
+
   Widget _buildDrawer() {
     return Drawer(
       child: Column(
@@ -620,13 +721,20 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             ),
           ),
           Expanded(
-            child: ListView.builder(
+            // Long-press and drag to reorder.
+            child: ReorderableListView.builder(
               itemCount: _playlists.length,
+              onReorder: _reorderPlaylists,
               itemBuilder: (context, index) {
                 final playlist = _playlists[index];
+                final total = playlistDuration(playlist);
                 return ListTile(
+                  key: ObjectKey(playlist),
                   title: Text(playlist.name),
-                  subtitle: Text('${playlist.items.length} songs'),
+                  subtitle: Text([
+                    '${playlist.items.length} songs',
+                    if (total.known > 0) formatDuration(total.seconds),
+                  ].join(' · ')),
                   selected: _currentPlaylistIndex == index,
                   onTap: () {
                     setState(() {
@@ -636,40 +744,35 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     });
                     Navigator.pop(context);
                   },
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PlaylistEditScreen(
-                                playlist: playlist,
-                                onChanged: () {
-                                  setState(_updateMetronomeTempo);
-                                  _savePlaylists();
-                                },
-                              ),
-                            ),
-                          );
-                        },
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'Playlist actions',
+                    onSelected: (action) {
+                      switch (action) {
+                        case 'edit':
+                          _openPlaylistEditor(playlist);
+                        case 'duplicate':
+                          _duplicatePlaylist(index);
+                        case 'delete':
+                          _confirmDeletePlaylist(index);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(leading: Icon(Icons.edit), title: Text('Edit')),
                       ),
-                      if (_playlists.length > 1) // Only allow delete if it's not the last playlist
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.redAccent),
-                          onPressed: () {
-                            setState(() {
-                              _playlists.removeAt(index);
-                              if (_currentPlaylistIndex >= index && _currentPlaylistIndex > 0) {
-                                _currentPlaylistIndex--;
-                              }
-                              _currentSetlistIndex = 0;
-                              _updateMetronomeTempo();
-                            });
-                            _savePlaylists();
-                          },
+                      const PopupMenuItem(
+                        value: 'duplicate',
+                        child: ListTile(leading: Icon(Icons.copy), title: Text('Duplicate')),
+                      ),
+                      // Keep at least one playlist.
+                      if (_playlists.length > 1)
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: ListTile(
+                            leading: Icon(Icons.delete, color: Colors.redAccent),
+                            title: Text('Delete'),
+                          ),
                         ),
                     ],
                   ),
@@ -1388,10 +1491,27 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.redAccent),
                         onPressed: () {
+                          final removed = widget.playlist.items[index];
                           setState(() {
                             widget.playlist.items.removeAt(index);
                             widget.onChanged();
                           });
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(SnackBar(
+                              content: Text('Removed "${removed.name}"'),
+                              action: SnackBarAction(
+                                label: 'Undo',
+                                onPressed: () {
+                                  // Works even after leaving the editor.
+                                  widget.playlist.items.insert(
+                                      index.clamp(0, widget.playlist.items.length),
+                                      removed);
+                                  widget.onChanged();
+                                  if (mounted) setState(() {});
+                                },
+                              ),
+                            ));
                         },
                       ),
                       ReorderableDragStartListener(
