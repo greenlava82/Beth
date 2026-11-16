@@ -15,6 +15,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'playlist.dart';
 import 'playlist_text.dart';
 import 'tempo_detector.dart';
+import 'tempo_drift.dart';
 import 'tempo_lock.dart';
 
 void main() {
@@ -88,6 +89,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Count-in: the metronome auto-starts on a new song and pauses itself
   // once the band's detected tempo locks onto the song's marking.
   final TempoLock _tempoLock = TempoLock();
+  // How far the heard tempo is from the song's target (null = no reading).
+  final TempoDriftTracker _driftTracker = TempoDriftTracker();
+  TempoDrift? _drift;
   // Preferred tempo range: picks between half/double-time readings.
   static const double _rangeLimitMin = 40;
   static const double _rangeLimitMax = 220;
@@ -431,6 +435,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _updateMetronomeTempo();
       _tempoDetector.reset();
       _currentCalculatedBpm = 0;
+      _driftTracker.reset();
+      _drift = null;
       _tempoLock.arm(playlist.items[_currentSetlistIndex].bpm.toDouble());
     });
   }
@@ -585,6 +591,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _detectionConfidence = now?.confidence ?? 0;
       _currentCalculatedBpm =
           (now == null || now.confidence < _minDisplayConfidence) ? 0 : now.bpm;
+      final playlist = _playlists[_currentPlaylistIndex];
+      _drift = playlist.items.isEmpty
+          ? null
+          : _driftTracker.update(_currentCalculatedBpm,
+              playlist.items[_currentSetlistIndex].bpm.toDouble());
     });
 
     if (_isMetronomePlaying && _tempoLock.update(now, DateTime.now())) {
@@ -979,6 +990,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   /// BPM axis range fitted to the readings currently on screen, with
   /// headroom on top for the tempo readout. Returns (minY, maxY, step).
+  /// The current song's BPM, or null with an empty playlist.
+  double? get _currentTargetBpm {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty) return null;
+    return playlist.items[_currentSetlistIndex].bpm.toDouble();
+  }
+
   (double, double, double) _chartYRange(double minX) {
     double? lo, hi;
     for (final spot in _bpmHistory) {
@@ -989,6 +1007,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     // No readings yet: frame the preferred range.
     lo ??= _preferredRange.start;
     hi ??= _preferredRange.end;
+    // Keep the target line in view so drift can be seen against it.
+    final target = _currentTargetBpm;
+    if (target != null) {
+      lo = math.min(lo, target);
+      hi = math.max(hi, target);
+    }
 
     // At least 30 BPM of span so a steady tempo isn't magnified into noise.
     if (hi - lo < 30) {
@@ -1079,6 +1103,23 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         borderData: FlBorderData(show: true),
         minY: minY,
         maxY: maxY,
+        // The song's target BPM, to see drift against.
+        extraLinesData: ExtraLinesData(horizontalLines: [
+          if (_currentTargetBpm != null)
+            HorizontalLine(
+              y: _currentTargetBpm!,
+              color: Colors.white.withAlpha(170),
+              strokeWidth: 1.5,
+              dashArray: const [6, 4],
+              label: HorizontalLineLabel(
+                show: true,
+                alignment: Alignment.bottomLeft,
+                padding: const EdgeInsets.only(left: 4, bottom: 2),
+                style: TextStyle(color: Colors.grey[300], fontSize: 10),
+                labelResolver: (line) => 'target ${line.y.round()}',
+              ),
+            ),
+        ]),
         rangeAnnotations: RangeAnnotations(
           horizontalRangeAnnotations: [
             HorizontalRangeAnnotation(
@@ -1123,24 +1164,32 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           borderRadius: BorderRadius.circular(16),
         ),
         child: hasTempo
-            ? Text.rich(
-                TextSpan(children: [
-                  TextSpan(
-                    text: parts[0],
-                    style: const TextStyle(
-                        fontSize: 56, fontWeight: FontWeight.w800, height: 1.1),
-                  ),
-                  TextSpan(
-                    text: '.${parts[1]}',
-                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
-                  ),
-                  TextSpan(
-                    text: '  BPM',
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text.rich(
+                    TextSpan(children: [
+                      TextSpan(
+                        text: parts[0],
+                        style: const TextStyle(
+                            fontSize: 56, fontWeight: FontWeight.w800, height: 1.1),
+                      ),
+                      TextSpan(
+                        text: '.${parts[1]}',
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
+                      ),
+                      TextSpan(
+                        text: '  BPM',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[400]),
+                      ),
+                    ]),
+                    // The number takes the drift colour: green / amber / red.
                     style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[400]),
+                        color: _driftColor(_drift) ?? Colors.white, shadows: shadow),
                   ),
-                ]),
-                style: const TextStyle(color: Colors.white, shadows: shadow),
+                  if (_drift != null) _buildDriftBadge(_drift!),
+                ],
               )
             : Padding(
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1153,6 +1202,52 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       shadows: shadow),
                 ),
               ),
+      ),
+    );
+  }
+
+  static Color? _driftColor(TempoDrift? drift) => switch (drift?.level) {
+        DriftLevel.onTempo => Colors.greenAccent,
+        DriftLevel.drifting => Colors.amber,
+        DriftLevel.off => Colors.redAccent,
+        null => null,
+      };
+
+  /// "✓ on tempo" / "▲ +3.1 rushing" / "▼ −2.0 dragging", in the drift colour.
+  Widget _buildDriftBadge(TempoDrift drift) {
+    final color = _driftColor(drift)!;
+    final onTempo = drift.level == DriftLevel.onTempo;
+    final amount = drift.deltaBpm.abs().toStringAsFixed(1);
+    final label = onTempo
+        ? 'on tempo'
+        : drift.isRushing
+            ? '+$amount rushing'
+            : '−$amount dragging';
+    final octave = drift.octave == 2
+        ? ' · at 2× time'
+        : drift.octave == 0.5
+            ? ' · at ½ time'
+            : '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            onTempo
+                ? Icons.check_circle
+                : drift.isRushing
+                    ? Icons.arrow_upward
+                    : Icons.arrow_downward,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$label$octave',
+            style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ],
       ),
     );
   }
@@ -1230,6 +1325,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 setState(() {
                   _isRecording = false;
                   _currentCalculatedBpm = 0;
+                  _drift = null;
                 });
               } else {
                 _startRecording();
