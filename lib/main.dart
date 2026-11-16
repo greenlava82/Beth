@@ -446,6 +446,107 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
+  // ==========================================================================
+  // Tempo graph
+  // ==========================================================================
+
+  Widget _buildTempoChart(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final now = _timeCounterMs / 1000.0;
+    return LineChart(
+      LineChartData(
+        gridData: const FlGridData(show: true),
+        titlesData: FlTitlesData(
+          bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+          ),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        ),
+        borderData: FlBorderData(show: true),
+        minY: 40,
+        maxY: 220,
+        rangeAnnotations: RangeAnnotations(
+          horizontalRangeAnnotations: [
+            HorizontalRangeAnnotation(
+              y1: _preferredRange.start,
+              y2: _preferredRange.end,
+              color: colors.primary.withAlpha(25),
+            ),
+          ],
+        ),
+        minX: now - _historyWindowSeconds,
+        maxX: now,
+        lineBarsData: [
+          LineChartBarData(
+            spots: _bpmHistory,
+            isCurved: true,
+            color: colors.primary,
+            barWidth: 3,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: colors.primary.withAlpha(51),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTempoReadout(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final hasTempo = _currentCalculatedBpm > 0;
+    final parts = _currentCalculatedBpm.toStringAsFixed(1).split('.');
+    const shadow = [Shadow(blurRadius: 12, color: Colors.black)];
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        decoration: BoxDecoration(
+          color: colors.surface.withAlpha(150),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: hasTempo
+            ? Text.rich(
+                TextSpan(children: [
+                  TextSpan(
+                    text: parts[0],
+                    style: const TextStyle(
+                        fontSize: 56, fontWeight: FontWeight.w800, height: 1.1),
+                  ),
+                  TextSpan(
+                    text: '.${parts[1]}',
+                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
+                  ),
+                  TextSpan(
+                    text: '  BPM',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[400]),
+                  ),
+                  TextSpan(
+                    text: '  ${(_detectionConfidence * 100).round()}%',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                ]),
+                style: const TextStyle(color: Colors.white, shadows: shadow),
+              )
+            : Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Text(
+                  _isRecording ? 'Listening…' : 'Mic off',
+                  style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[400],
+                      shadows: shadow),
+                ),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingPlaylists) {
@@ -494,14 +595,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    _currentCalculatedBpm > 0
-                        ? 'Detected Tempo: ${_currentCalculatedBpm.toStringAsFixed(1)} BPM'
-                            '  (${(_detectionConfidence * 100).round()}%)'
-                        : 'Detected Tempo: — listening…',
-                    style: Theme.of(context).textTheme.titleLarge,
-                    textAlign: TextAlign.center,
-                  ),
                   Row(
                     children: [
                       Text(
@@ -529,58 +622,18 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     ],
                   ),
                   Expanded(
-                    child: _bpmHistory.isEmpty
-                        ? const Center(child: Text("Waiting for audio..."))
-                        : LineChart(
-                            LineChartData(
-                              gridData: FlGridData(show: true),
-                              titlesData: FlTitlesData(
-                                bottomTitles: AxisTitles(
-                                  sideTitles: SideTitles(showTitles: false),
-                                ),
-                                leftTitles: AxisTitles(
-                                  sideTitles: SideTitles(
-                                    showTitles: true,
-                                    reservedSize: 40,
-                                  ),
-                                ),
-                                topTitles: AxisTitles(
-                                  sideTitles: SideTitles(showTitles: false),
-                                ),
-                                rightTitles: AxisTitles(
-                                  sideTitles: SideTitles(showTitles: false),
-                                ),
-                              ),
-                              borderData: FlBorderData(show: true),
-                              minY: 40,
-                              maxY: 220,
-                              rangeAnnotations: RangeAnnotations(
-                                horizontalRangeAnnotations: [
-                                  HorizontalRangeAnnotation(
-                                    y1: _preferredRange.start,
-                                    y2: _preferredRange.end,
-                                    color: Theme.of(context).colorScheme.primary.withAlpha(25),
-                                  ),
-                                ],
-                              ),
-                              minX: (_timeCounterMs / 1000.0) - _historyWindowSeconds,
-                              maxX: _timeCounterMs / 1000.0,
-                              lineBarsData: [
-                                LineChartBarData(
-                                  spots: _bpmHistory,
-                                  isCurved: true,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  barWidth: 3,
-                                  isStrokeCapRound: true,
-                                  dotData: FlDotData(show: false),
-                                  belowBarData: BarAreaData(
-                                    show: true,
-                                    color: Theme.of(context).colorScheme.primary.withAlpha(51),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(child: _buildTempoChart(context)),
+                        // Detected tempo, overlaid on the top of the graph.
+                        Positioned(
+                          top: 4,
+                          left: 40, // clear of the left axis labels
+                          right: 0,
+                          child: IgnorePointer(child: _buildTempoReadout(context)),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
