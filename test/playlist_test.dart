@@ -43,4 +43,75 @@ void main() {
     expect(a.items.first.bpm, 80);
     expect(a.items.length, 4);
   });
+
+  group('song details', () {
+    test('default to 4/4, no notes, no duration', () {
+      final p = decodePlaylists(
+          '[{"name":"Old","items":[{"name":"A","bpm":100}]}]')!.single;
+      final song = p.items.single;
+      expect(song.timeSignature, '4/4');
+      expect(song.beatsPerBar, 4);
+      expect(song.notes, '');
+      expect(song.durationSeconds, isNull);
+    });
+
+    test('round-trip through JSON', () {
+      final song = SetlistItem('Waltz', 150,
+          timeSignature: '3/4', notes: 'Key of D\nPiano starts', durationSeconds: 245);
+      final back = decodePlaylists(encodePlaylists([
+        Playlist('P', [song])
+      ]))!.single.items.single;
+      expect(back.timeSignature, '3/4');
+      expect(back.beatsPerBar, 3);
+      expect(back.notes, 'Key of D\nPiano starts');
+      expect(back.durationSeconds, 245);
+    });
+
+    test('unknown time signature falls back to 4/4', () {
+      final song = SetlistItem.fromJson(
+          {'name': 'X', 'bpm': 90, 'timeSignature': '11/3'});
+      expect(song.timeSignature, '4/4');
+    });
+
+    test('beatsPerBar follows the top number', () {
+      expect(SetlistItem('a', 1, timeSignature: '6/8').beatsPerBar, 6);
+      expect(SetlistItem('a', 1, timeSignature: '12/8').beatsPerBar, 12);
+    });
+
+    test('copy keeps details', () {
+      final a = SetlistItem('a', 90,
+          timeSignature: '7/8', notes: 'n', durationSeconds: 60);
+      final b = a.copy();
+      expect([b.timeSignature, b.notes, b.durationSeconds], ['7/8', 'n', 60]);
+    });
+  });
+
+  group('durations', () {
+    test('format', () {
+      expect(formatDuration(185), '3:05');
+      expect(formatDuration(59), '0:59');
+      expect(formatDuration(3600), '60:00');
+    });
+
+    test('parse', () {
+      expect(parseDuration('3:05'), 185);
+      expect(parseDuration(' 4 '), 240);
+      expect(parseDuration('0:45'), 45);
+      expect(parseDuration(''), isNull);
+      expect(parseDuration('3:75'), isNull);
+      expect(parseDuration('abc'), isNull);
+      expect(parseDuration('0'), isNull);
+    });
+
+    test('playlist total counts only known durations', () {
+      final p = Playlist('P', [
+        SetlistItem('a', 1, durationSeconds: 200),
+        SetlistItem('b', 1),
+        SetlistItem('c', 1, durationSeconds: 100),
+      ]);
+      final d = playlistDuration(p);
+      expect(d.seconds, 300);
+      expect(d.known, 2);
+    });
+  });
 }

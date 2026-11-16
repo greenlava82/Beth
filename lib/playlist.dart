@@ -1,25 +1,88 @@
 import 'dart:convert';
 
+/// Time signatures offered in the song editor.
+const List<String> timeSignatures = [
+  '2/4', '3/4', '4/4', '5/4', '6/8', '7/8', '9/8', '12/8', //
+];
+
 /// One song in a setlist.
 class SetlistItem {
   String name;
   int bpm;
 
-  SetlistItem(this.name, this.bpm);
+  /// e.g. "4/4"; the metronome accents the first of [beatsPerBar] beats.
+  String timeSignature;
 
-  SetlistItem copy() => SetlistItem(name, bpm);
+  /// Free-form notes: key, cues, who starts…
+  String notes;
+
+  /// Expected length, if known.
+  int? durationSeconds;
+
+  SetlistItem(
+    this.name,
+    this.bpm, {
+    this.timeSignature = '4/4',
+    this.notes = '',
+    this.durationSeconds,
+  });
+
+  /// Beats in one bar (the time signature's top number).
+  int get beatsPerBar {
+    final n = int.tryParse(timeSignature.split('/').first);
+    return (n == null || n < 1) ? 4 : n;
+  }
+
+  SetlistItem copy() => SetlistItem(name, bpm,
+      timeSignature: timeSignature,
+      notes: notes,
+      durationSeconds: durationSeconds);
 
   Map<String, dynamic> toJson() => {
         'name': name,
         'bpm': bpm,
+        'timeSignature': timeSignature,
+        if (notes.isNotEmpty) 'notes': notes,
+        if (durationSeconds != null) 'durationSeconds': durationSeconds,
       };
 
   factory SetlistItem.fromJson(Map<String, dynamic> json) {
+    final ts = json['timeSignature'] as String?;
     return SetlistItem(
       (json['name'] as String?) ?? 'Unnamed Song',
       (json['bpm'] as num?)?.round() ?? 120,
+      timeSignature: (ts != null && timeSignatures.contains(ts)) ? ts : '4/4',
+      notes: (json['notes'] as String?) ?? '',
+      durationSeconds: (json['durationSeconds'] as num?)?.round(),
     );
   }
+}
+
+/// "3:05" for 185 seconds.
+String formatDuration(int seconds) =>
+    '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+
+/// Parses "3:05" or "3" (minutes) into seconds. Returns null for blank or
+/// invalid input.
+int? parseDuration(String text) {
+  final t = text.trim();
+  if (t.isEmpty) return null;
+  final m = RegExp(r'^(\d{1,3})(?::([0-5]\d))?$').firstMatch(t);
+  if (m == null) return null;
+  final total = int.parse(m[1]!) * 60 + int.parse(m[2] ?? '0');
+  return total > 0 ? total : null;
+}
+
+/// Total of the known song durations, and how many songs have one.
+({int seconds, int known}) playlistDuration(Playlist p) {
+  var seconds = 0, known = 0;
+  for (final s in p.items) {
+    if (s.durationSeconds != null) {
+      seconds += s.durationSeconds!;
+      known++;
+    }
+  }
+  return (seconds: seconds, known: known);
 }
 
 /// A named, ordered setlist.
