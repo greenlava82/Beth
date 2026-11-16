@@ -353,6 +353,25 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     _setSongBpm(song, song.bpm + delta);
   }
 
+  /// Overwrite the current song's BPM with the tempo being heard.
+  void _captureDetectedBpm() {
+    final playlist = _playlists[_currentPlaylistIndex];
+    if (playlist.items.isEmpty || _currentCalculatedBpm <= 0) return;
+    final song = playlist.items[_currentSetlistIndex];
+    final previous = song.bpm;
+    final captured = _currentCalculatedBpm.round();
+    _setSongBpm(song, captured);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Saved $captured BPM to "${song.name}" (was $previous)'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _setSongBpm(song, previous),
+        ),
+      ));
+  }
+
   Widget _buildNudgeColumn(Playlist playlist, List<int> deltas) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1014,7 +1033,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
                     const SizedBox(height: 16),
 
-                    // Play/stop
+                    // Play/stop and capture
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -1023,6 +1042,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                           icon: Icon(_isMetronomePlaying ? Icons.stop_circle_outlined : Icons.play_circle_fill),
                           color: _isMetronomePlaying ? Colors.redAccent : Colors.greenAccent,
                           onPressed: playlist.items.isEmpty ? null : _toggleMetronome,
+                        ),
+                        const SizedBox(width: 12),
+                        FilledButton.tonalIcon(
+                          onPressed: playlist.items.isEmpty || _currentCalculatedBpm <= 0
+                              ? null
+                              : _captureDetectedBpm,
+                          icon: const Icon(Icons.hearing),
+                          label: Text(_currentCalculatedBpm > 0
+                              ? 'Capture ${_currentCalculatedBpm.round()}'
+                              : 'Capture'),
                         ),
                       ],
                     ),
