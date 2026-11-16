@@ -252,6 +252,12 @@ test/
 4. **Smoothing** — scores are blended over time so the number is steady but
    still follows real tempo changes.
 
+### Roadmap
+
+Planned features, ideas and open questions (band sync, rehearsal setlist
+building, performance log, watch display, …) are tracked in
+[TODO.md](TODO.md).
+
 ### Contributing
 
 Work on a feature branch and open a pull request against `main`. Keep commits
