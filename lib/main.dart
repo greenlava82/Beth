@@ -108,7 +108,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   // Chart Data
   final List<FlSpot> _bpmHistory = [];
-  final double _historyWindowSeconds = 300; // 5 minutes
+  // How long readings stay on the graph before expiring. Default is about
+  // one song.
+  static const List<int> _historyMinuteOptions = [1, 2, 3, 4, 5, 8, 10];
+  int _historyMinutes = 4;
+  double get _historyWindowSeconds => _historyMinutes * 60.0;
   int _timeCounterMs = 0;
   Timer? _chartTimer;
   double _currentCalculatedBpm = 0;
@@ -149,10 +153,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           _bpmHistory.add(FlSpot.nullSpot);
         }
 
-        // Keep only last 5 minutes
-        if (_bpmHistory.length > _historyWindowSeconds) {
-          _bpmHistory.removeAt(0);
-        }
+        _trimHistory();
       });
     });
   }
@@ -163,6 +164,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
     final savedMin = prefs.getDouble('preferredMinBpm');
     final savedMax = prefs.getDouble('preferredMaxBpm');
+
+    final savedHistory = prefs.getInt('historyMinutes');
+    if (savedHistory != null && _historyMinuteOptions.contains(savedHistory)) {
+      _historyMinutes = savedHistory;
+    }
     if (savedMin != null && savedMax != null) {
       _setPreferredRange(RangeValues(
         savedMin.clamp(_rangeLimitMin, _rangeLimitMax),
@@ -199,6 +205,51 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   void _setPreferredRange(RangeValues values) {
     setState(() => _preferredRange = values);
     _tempoDetector.setPreferredRange(values.start, values.end);
+  }
+
+  /// Expire readings older than the history window (one entry per second).
+  void _trimHistory() {
+    final excess = _bpmHistory.length - _historyWindowSeconds.round();
+    if (excess > 0) _bpmHistory.removeRange(0, excess);
+  }
+
+  void _setHistoryMinutes(int minutes) {
+    setState(() {
+      _historyMinutes = minutes;
+      _trimHistory();
+    });
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setInt('historyMinutes', minutes));
+  }
+
+  Widget _buildHistoryChip(BuildContext context) {
+    return PopupMenuButton<int>(
+      tooltip: 'How long readings stay on the graph',
+      initialValue: _historyMinutes,
+      onSelected: _setHistoryMinutes,
+      itemBuilder: (context) => [
+        for (final m in _historyMinuteOptions)
+          PopupMenuItem(value: m, child: Text('Keep $m min')),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface.withAlpha(170),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.history, size: 14, color: Colors.grey[300]),
+            const SizedBox(width: 4),
+            Text(
+              '$_historyMinutes min',
+              style: TextStyle(color: Colors.grey[300], fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _savePreferredRange() async {
@@ -778,6 +829,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                           child: IgnorePointer(
                             child: Center(child: _buildConfidenceIndicator(context)),
                           ),
+                        ),
+                        // History length, bottom-right of the plot.
+                        Positioned(
+                          bottom: 30,
+                          right: 4,
+                          child: _buildHistoryChip(context),
                         ),
                       ],
                     ),
