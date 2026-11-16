@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'tempo_detector.dart';
+import 'tempo_lock.dart';
 
 void main() {
   runApp(const BpmMetronomeApp());
@@ -126,6 +127,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   final TempoDetector _tempoDetector =
       TempoDetector(sampleRate: _sampleRate, priorOctaveWidth: 0.6);
   double _detectionConfidence = 0;
+  // Count-in: the metronome auto-starts on a new song and pauses itself
+  // once the band's detected tempo locks onto the song's marking.
+  final TempoLock _tempoLock = TempoLock();
   // Preferred tempo range: picks between half/double-time readings.
   static const double _rangeLimitMin = 40;
   static const double _rangeLimitMax = 220;
@@ -298,6 +302,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   }
 
   void _toggleMetronome() {
+    // Manual control wins: don't auto-pause a metronome the user started.
+    _tempoLock.disarm();
     setState(() {
       _isMetronomePlaying = !_isMetronomePlaying;
       _updateMetronomeTempo();
@@ -311,6 +317,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         _currentSetlistIndex = (_currentSetlistIndex + 1) % playlist.items.length;
         _isMetronomePlaying = true; // Auto-play on next song
         _updateMetronomeTempo();
+        // Listen fresh for the new song, and pause the metronome once the
+        // band locks onto its marking.
+        _tempoDetector.reset();
+        _currentCalculatedBpm = 0;
+        _tempoLock.arm(playlist.items[_currentSetlistIndex].bpm.toDouble());
       }
     });
   }
@@ -370,6 +381,18 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _currentCalculatedBpm =
           (now == null || now.confidence < _minDisplayConfidence) ? 0 : now.bpm;
     });
+
+    if (_isMetronomePlaying && _tempoLock.update(now, DateTime.now())) {
+      setState(() {
+        _isMetronomePlaying = false;
+        _updateMetronomeTempo();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'Locked on ${now!.bpm.toStringAsFixed(1)} BPM — metronome paused'),
+        duration: const Duration(seconds: 3),
+      ));
+    }
   }
 
   @override
