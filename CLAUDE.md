@@ -55,6 +55,16 @@ maintained.
   "service UUID". `BandSyncDetails` (playlist + song names) is JSON read once
   over GATT; `BandSyncFreshness` (stale 4 s / lost 12 s) counts only new
   sequence numbers, since the radio repeats the last advertisement.
+- `lib/band_sync_icon.dart` — session icons: session id % 96 → one of 16
+  shapes × 6 colours with a sayable name ("orange anchor"), so bandmates
+  can check they joined the right leader. Not on the wire: followers derive
+  it from the session id. The leader keeps the band's icon (`bandIcon`) by
+  picking a random session id with that icon (`sessionIdForIcon`). The
+  firmware ports the mapping (vectors in `band_sync_vectors.h`); after
+  changing the shapes (`bandSyncIconGlyphs` in `band_sync_icon_view.dart`),
+  run `flutter test tool/render_session_icons_test.dart` to regenerate
+  `firmware/cyd-follower/src/session_icons.h`, and reflash the CYD.
+  Tests: `test/band_sync_icon_test.dart`.
 - `lib/band_sync.dart` — BLE transport on `bluetooth_low_energy` (MIT):
   `BandSyncLeader` re-advertises on change plus a 1 s heartbeat and serves the
   details characteristic; `BandSyncFollower` scans without connecting, tracks
@@ -96,7 +106,8 @@ maintained.
 - `test/widget_test.dart` — app smoke test.
 
 Persisted in `SharedPreferences`: `playlists` (JSON), `preferredMinBpm`,
-`preferredMaxBpm`, `historyMinutes`, `currentPlaylist`, `currentSong`.
+`preferredMaxBpm`, `historyMinutes`, `currentPlaylist`, `currentSong`,
+`bandIcon` (session icon index 0..95).
 Changing their shape needs a migration or a tolerant loader; new song fields
 must default sensibly in `SetlistItem.fromJson` (see `playlist_test.dart`).
 

@@ -7,7 +7,8 @@ tempo with no phone, pairing or app.
 
 It shows:
 
-- the leader's code (e.g. `5F6E`), the playlist name and *Song 2 of 12*
+- the leader's session icon (e.g. a green anchor), the playlist name and
+  *Song 2 of 12*
   (or *COUNT-IN* while the leader's count-in metronome runs);
 - the song name with its target tempo, and the song up next (or *Free
   running*);
@@ -30,8 +31,9 @@ Accents and typographic quotes are simplified for the screen's fonts
 Like the phone follower, it joins by itself when only one leader is nearby
 (it listens for 2 s first, so every nearby leader has a chance to be heard).
 With several, it shows **Choose a leader**: one row per leader with its
-code, song, target, heard tempo and signal strength. Tap the code that
-matches the leader's phone.
+session icon, name and code (*Green anchor 5F6E*; the code tells apart two
+leaders that happen to share an icon), song, target, heard tempo and signal
+strength. Tap the icon that matches the leader's phone.
 
 While following, the bottom line says *tap the screen to switch leader*
 when another leader is around. Tap anywhere to open the list (the current
@@ -40,7 +42,8 @@ closes by itself after 20 s untouched.
 
 If the leader is lost (12 s with no news), it switches by itself when exactly
 one other leader is live (for example after the leader stops and starts
-leading again, which picks a new code), and asks when there are several.
+leading again, which picks a new code but keeps the band's icon), and asks
+when there are several.
 
 The touch panel is resistive: press firmly with a fingernail or stylus.
 
@@ -98,8 +101,9 @@ The screen is drawn a third at a time into a 16-bit buffer. A whole-screen
 ## Code
 
 - `lib/band_sync/` — payload decoder and freshness rules, a C++ port of
-  `lib/band_sync_protocol.dart`, plus the details JSON parser and the
-  text cleanup for the fonts. No Arduino dependencies.
+  `lib/band_sync_protocol.dart`, plus the session icon mapping
+  (`lib/band_sync_icon.dart`), the details JSON parser and the text cleanup
+  for the fonts. No Arduino dependencies.
 - `src/leaders.*` — leaders heard nearby, by session id (thread-safe; the
   BLE scan runs on its own task).
 - `src/display.*` — the screen layouts (follower and leader list) and the
@@ -107,6 +111,10 @@ The screen is drawn a third at a time into a 16-bit buffer. A whole-screen
 - `src/branding_images.h` — **generated** by the app's
   `tool/render_branding_test.dart`: the SCBeatWiz mark shown on the
   searching screen and, faintly, behind the follower screen.
+- `src/session_icons.h` — **generated** by the app's
+  `tool/render_session_icons_test.dart`: the 16 session icon shapes as
+  4-bit alpha masks (from the Material icons the app shows), tinted with
+  the icon's colour when drawn. Regenerate after changing the shapes.
 - `src/touch.*` — the XPT2046 touch panel on its own SPI bus, mapped to
   screen pixels.
 - `src/main.cpp` — passive NimBLE scan (no duplicate filtering, so every
