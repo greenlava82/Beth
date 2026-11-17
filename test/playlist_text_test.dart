@@ -145,6 +145,16 @@ Song B, 120
       expect(text, contains('"kind": "$backupKind"'));
       expect(text, contains('"version": $backupVersion'));
       expect(text, contains('"saved": "2026-11-17T20:30:00.000Z"'));
+      expect(text, isNot(contains('"app"')));
+    });
+
+    test('records the app version that wrote it', () {
+      final text = playlistsToBackup(playlists,
+          appVersion: '1.0.0 (build 130, 47bc7bb)');
+      expect(text, contains('"app": "1.0.0 (build 130, 47bc7bb)"'));
+      final r = parsePlaylistText(text);
+      expect(r.isBackup, isTrue);
+      expect(r.playlists.length, 3);
     });
 
     test('tolerates unknown fields and newer versions', () {
