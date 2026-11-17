@@ -11,6 +11,10 @@ struct TouchPoint {
   uint16_t rawY;
 };
 
+// The panel's "pressed" line (low while pressed). An RTC pin, so a tap can
+// wake the ESP32 from deep sleep.
+constexpr int kTouchIrqPin = 36;
+
 void touchBegin();
 
 // True while the panel is pressed, with the averaged position.

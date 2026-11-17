@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <TFT_eSPI.h>
+#include <driver/gpio.h>
 #include <string.h>
 
 using bandsync::Drift;
@@ -71,6 +72,17 @@ void drawSearching(TFT_eSPI& c, int oy) {
   c.setTextColor(kGrey, kBg);
   c.drawString("On the leader's phone, tap the band", kW / 2, 140 + oy, 2);
   c.drawString("icon and choose \"Lead the band\".", kW / 2, 160 + oy, 2);
+  c.drawString("Sleeps after a minute without a leader;", kW / 2, 206 + oy, 1);
+  c.drawString("hold the screen to sleep now.", kW / 2, 220 + oy, 1);
+}
+
+void drawMessage(TFT_eSPI& c, const char* title, const char* detail,
+                 int oy) {
+  c.setTextDatum(MC_DATUM);
+  c.setTextColor(TFT_WHITE, kBg);
+  c.drawString(title, kW / 2, 100 + oy, 4);
+  c.setTextColor(kGrey, kBg);
+  c.drawString(detail, kW / 2, 140 + oy, 2);
 }
 
 void drawBanner(TFT_eSPI& c, const View& v, int oy) {
@@ -412,7 +424,40 @@ bool View::operator==(const View& o) const {
          strcmp(next, o.next) == 0;
 }
 
+void displayDrawMessage(const char* title, const char* detail) {
+  if (haveStrip) {
+    for (int top = 0; top < kH; top += kStripH) {
+      strip.fillSprite(kBg);
+      drawMessage(strip, title, detail, -top);
+      strip.pushSprite(0, top);
+    }
+  } else {
+    tft.fillScreen(kBg);
+    drawMessage(tft, title, detail, 0);
+  }
+  setLed(0, 0, 0);
+}
+
+void displayOff() {
+  tft.writecommand(0x28);  // display off
+  tft.writecommand(0x10);  // sleep in
+  delay(5);
+  const int pins[] = {TFT_BL, kLedR, kLedG, kLedB};
+  const int levels[] = {LOW, HIGH, HIGH, HIGH};  // the LED is active low
+  for (int i = 0; i < 4; i++) {
+    pinMode(pins[i], OUTPUT);  // also detaches the LED's PWM
+    digitalWrite(pins[i], levels[i]);
+    gpio_hold_en(static_cast<gpio_num_t>(pins[i]));
+  }
+  gpio_deep_sleep_hold_en();
+}
+
 void displayBegin() {
+  // Undo displayOff()'s pin holds after waking from deep sleep.
+  gpio_deep_sleep_hold_dis();
+  for (int pin : {TFT_BL, kLedR, kLedG, kLedB}) {
+    gpio_hold_dis(static_cast<gpio_num_t>(pin));
+  }
   pinMode(kLedR, OUTPUT);
   pinMode(kLedG, OUTPUT);
   pinMode(kLedB, OUTPUT);

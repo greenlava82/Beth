@@ -9,6 +9,7 @@
 #include <NimBLEDevice.h>
 #include <band_sync.h>
 #include <band_sync_details.h>
+#include <esp_sleep.h>
 #include <string.h>
 
 #include "display.h"
@@ -277,11 +278,40 @@ void logState(const LeaderInfo& l) {
       s.detailsVersion, l.rssi, l.address.toString().c_str());
 }
 
+// Sleep: hold the screen, or a minute with no leader nearby. A tap wakes
+// it (deep sleep ends in a fresh start, which finds the leader again).
+constexpr uint32_t kHoldHintMs = 700;   // longer than this isn't a tap
+constexpr uint32_t kSleepHoldMs = 2000;
+constexpr uint32_t kNoLeaderSleepMs = 60000;
+constexpr uint32_t kReleaseMs = 80;  // resistive panels drop out briefly
+
+[[noreturn]] void goToSleep(const char* why) {
+  Serial.printf("sleeping: %s\n", why);
+  displayDrawMessage("Sleeping", "Tap the screen to wake");
+  delay(1500);
+  // A finger still on the panel would wake it straight away.
+  const uint32_t start = millis();
+  while (digitalRead(kTouchIrqPin) == LOW && millis() - start < 10000) {
+    delay(20);
+  }
+  delay(100);
+
+  scanPaused = true;
+  NimBLEDevice::getScan()->stop();
+  displayOff();
+  esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(kTouchIrqPin), 0);
+  Serial.flush();
+  esp_deep_sleep_start();
+}
+
 }  // namespace
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\nSCBeatWiz CYD follower");
+  Serial.printf("\nSCBeatWiz CYD follower%s\n",
+                esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0
+                    ? " (woken by a tap)"
+                    : "");
   displayBegin();
   touchBegin();
   displayDraw(View());
@@ -298,8 +328,15 @@ void loop() {
   static bool drawnOnce = false;
   static bool pickerShown = false;
   static int lastLoggedSeq = -1;
-  static bool wasTouched = false;
-  static uint32_t lastTapMs = 0;
+  // Touch: taps act on release; a long hold puts it to sleep. A press
+  // already down at start-up (the tap that woke it) is ignored until it's
+  // let go: it starts as "pressing" with no start time.
+  static bool pressing = true;
+  static uint32_t pressStartMs = 0;
+  static uint32_t lastTouchedMs = 0;
+  static TouchPoint pressAt{};
+  static bool holdHintShown = false;
+  static uint32_t lastLeaderMs = 0;
 
   const uint32_t now = millis();
   LeaderInfo all[Leaders::kMax];
@@ -331,7 +368,6 @@ void loop() {
   const bool currentOk = v.hasLeader && v.link != bandsync::Link::Lost;
   const PickerView picker = buildPicker(all, now, currentOk);
 
-  // Taps act on the press, once (debounced).
   TouchPoint touch;
   const bool touched = touchRead(touch);
 #ifdef TOUCH_DEBUG
@@ -342,10 +378,51 @@ void loop() {
                   touch.rawY);
   }
 #endif
-  const bool tap = touched && !wasTouched && now - lastTapMs > 300;
-  wasTouched = touched;
+  bool tap = false;
+  if (touched) {
+    lastTouchedMs = now;
+    if (!pressing) {
+      pressing = true;
+      pressStartMs = now;
+      pressAt = touch;
+    }
+  } else if (pressing && now - lastTouchedMs > kReleaseMs) {
+    pressing = false;
+    tap = pressStartMs != 0 && !holdHintShown &&
+          lastTouchedMs - pressStartMs < kHoldHintMs;
+    if (holdHintShown) {
+      holdHintShown = false;  // let go before sleeping: carry on
+      drawnOnce = false;
+      pickerShown = false;
+    }
+  }
+  if (pressing && pressStartMs != 0) {
+    const uint32_t held = now - pressStartMs;
+    if (held >= kSleepHoldMs) goToSleep("held");
+    if (held >= kHoldHintMs && !holdHintShown) {
+      holdHintShown = true;
+      displayDrawMessage("Keep holding to sleep", "Let go to cancel");
+    }
+  }
+
+  // A minute with no leader nearby at all: sleep.
+  bool anyLeader = false;
+  for (int i = 0; i < Leaders::kMax; i++) {
+    if (all[i].used && all[i].freshness.linkAt(now) != bandsync::Link::Lost) {
+      anyLeader = true;
+    }
+  }
+  if (anyLeader || lastLeaderMs == 0) lastLeaderMs = now;
+  if (!pressing && now - lastLeaderMs > kNoLeaderSleepMs) {
+    goToSleep("no leader for a minute");
+  }
+  if (holdHintShown) {
+    delay(20);
+    return;
+  }
+
   if (tap) {
-    lastTapMs = now;
+    const TouchPoint& touch = pressAt;
     Serial.printf("tap %d,%d (raw %u,%u)\n", touch.x, touch.y, touch.rawX,
                   touch.rawY);
     if (pickerOpen) {

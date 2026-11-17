@@ -8,7 +8,7 @@ namespace {
 
 // XPT2046 wiring on the CYD: its own pins, so it gets the ESP32's second
 // SPI bus (the display uses HSPI).
-constexpr int kIrq = 36;
+constexpr int kIrq = kTouchIrqPin;
 constexpr int kMosi = 32;
 constexpr int kMiso = 39;
 constexpr int kClk = 25;

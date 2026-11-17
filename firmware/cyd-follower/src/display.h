@@ -54,3 +54,10 @@ int pickerHit(const PickerView& p, int x, int y);  // row index, or above
 void displayBegin();
 void displayDraw(const View& v);
 void displayDrawPicker(const PickerView& p);
+
+// A full-screen message (sleep prompts).
+void displayDrawMessage(const char* title, const char* detail);
+
+// Before deep sleep: panel asleep, backlight and LED off, and those pins
+// held so they stay off while the chip sleeps.
+void displayOff();
