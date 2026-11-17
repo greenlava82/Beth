@@ -160,6 +160,10 @@ Notes:
 - Source of truth is `tool/render_branding_test.dart`, which draws the mark
   with Flutter's canvas into `assets/branding/*.png` (no image tools needed).
   Colours: background `#1E1846`, lavender `#CFBCFF`, amber `#FFD180`.
+- The same script writes the CYD follower's logo
+  (`firmware/cyd-follower/src/branding_images.h`, run-length RGB565 blended
+  onto the CYD's `#121018` background, full and 11% strength). Reflash the
+  CYD after changing the mark; `display.cpp` checks the background matches.
 - Regenerate in order:
   `flutter test tool/render_branding_test.dart`, then
   `dart run flutter_launcher_icons`, then `dart run flutter_native_splash:create`.

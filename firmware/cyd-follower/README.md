@@ -104,6 +104,9 @@ The screen is drawn a third at a time into a 16-bit buffer. A whole-screen
   BLE scan runs on its own task).
 - `src/display.*` — the screen layouts (follower and leader list) and the
   RGB LED.
+- `src/branding_images.h` — **generated** by the app's
+  `tool/render_branding_test.dart`: the SCBeatWiz mark shown on the
+  searching screen and, faintly, behind the follower screen.
 - `src/touch.*` — the XPT2046 touch panel on its own SPI bus, mapped to
   screen pixels.
 - `src/main.cpp` — passive NimBLE scan (no duplicate filtering, so every
