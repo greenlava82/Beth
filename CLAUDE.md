@@ -78,6 +78,9 @@ maintained.
   The tested board (micro-USB + USB-C) has an ILI9341, not an ST7789, and an
   8-bit TFT_eSPI sprite gives it wrong colours: draw through the 16-bit
   strip. Only the user can see the screen, so ask them what it shows.
+- An Android leader's Bluetooth address changes on every re-advertise
+  (each update), so a GATT connection must use the address from the
+  newest advertisement immediately; a cached address times out.
 - `test/tempo_lock_test.dart` — unit tests for `TempoLock`.
 - `test/tempo_drift_test.dart` — unit tests for `TempoDriftTracker`.
 - `test/playlist_test.dart`, `test/playlist_text_test.dart` — model, JSON

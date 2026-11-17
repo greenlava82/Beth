@@ -7,9 +7,10 @@ tempo with no phone, pairing or app.
 
 It shows:
 
-- the leader's code (e.g. `5F6E`) and song number;
-- the target tempo (or *Free running*) and *COUNT-IN* while the leader's
-  count-in metronome runs;
+- the leader's code (e.g. `5F6E`), the playlist name and *Song 2 of 12*
+  (or *COUNT-IN* while the leader's count-in metronome runs);
+- the song name with its target tempo, and the song up next (or *Free
+  running*);
 - the heard tempo, large, in the leader's drift colour (green on tempo, amber
   drifting, red off), with *▲ 4.0 rushing* / *▼ 2.1 dragging* or *on tempo*;
 - detection confidence as a bar;
@@ -17,13 +18,18 @@ It shows:
   after 12 s, so a frozen number never looks live (the number turns grey);
 - the drift colour on the board's RGB LED.
 
-It only listens: it decodes the leader's advertisement and never connects.
+The live numbers come from the leader's advertisement, without connecting.
+Like the phone follower, it connects once to read the playlist and song
+names (shown as *Getting song names...* meanwhile; the leader's band menu
+counts it as joined), and again only when the leader's setlist changes.
+Accents and typographic quotes are simplified for the screen's fonts
+(*Ça va* shows as *Ca va*); emoji show as `?`.
+
 It follows the strongest leader it hears, and switches by itself when that
 leader is lost and another is broadcasting (for example after the leader
 stops and starts leading again, which picks a new code).
 
-Not yet: song names (the one-off details read over GATT) and touch to choose
-between several leaders.
+Not yet: touch to choose between several leaders.
 
 ## Build and flash
 
@@ -57,13 +63,14 @@ The screen is drawn a third at a time into a 16-bit buffer. A whole-screen
 ## Code
 
 - `lib/band_sync/` — payload decoder and freshness rules, a C++ port of
-  `lib/band_sync_protocol.dart`. No Arduino dependencies.
+  `lib/band_sync_protocol.dart`, plus the details JSON parser and the
+  text cleanup for the fonts. No Arduino dependencies.
 - `src/leaders.*` — leaders heard nearby, by session id (thread-safe; the
   BLE scan runs on its own task).
 - `src/display.*` — the screen layout and the RGB LED.
 - `src/main.cpp` — passive NimBLE scan (no duplicate filtering, so every
-  repeat is seen), choosing a leader, redrawing only when something shown
-  changes.
+  repeat is seen), choosing a leader, reading the names, redrawing only when
+  something shown changes.
 - `test/band_sync_vectors.h` — **generated** from the app's encoder by
   `test/band_sync_vectors_test.dart` in the app; `flutter test` fails if it's
   out of date. Regenerate with
@@ -77,3 +84,9 @@ pio test -e native
 
 Byte order matters: BLE sends a 128-bit UUID little-endian, so over the air
 the payload's first byte (`0x5C`) comes last.
+
+An Android leader gets a new random Bluetooth address every time it
+re-advertises (on every update, up to four times a second), and the old
+address stops answering. So the firmware waits for the first advertisement
+of a new sequence and connects to that address at once. About half the
+reads still miss the first time and succeed on a retry a second later.

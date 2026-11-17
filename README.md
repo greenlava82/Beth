@@ -173,7 +173,7 @@ phones stop broadcasting in the background. Range is a typical stage (about
 
 A follower doesn't have to be a phone: [`firmware/cyd-follower`](firmware/cyd-follower)
 turns a cheap ESP32 board with a 2.8″ screen (the "Cheap Yellow Display") into
-a USB-powered tempo display for the drum riser.
+a USB-powered tempo display for the drum riser, with song names.
 
 ### Tips
 
