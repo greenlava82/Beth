@@ -25,8 +25,9 @@ snaps, solo piano, strummed guitar or a lone bass line.
 - **Tempo history graph** — see if you're rushing or dragging over the course
   of a song.
 - **Setlists** with a BPM and optional length per song, saved
-  on the device — jump to any song, see what's up next, and share or import
-  setlists as plain text.
+  on the device — jump to any song, see what's up next, share or import
+  setlists as plain text, and back up all of them to a file (phone, Google
+  Drive, iCloud Drive…).
 - **Count-in metronome** that starts with each song and steps aside
   automatically once the band locks onto the tempo.
 - **Nudge (±1, ±5) or capture** the tempo you're hearing to fix up a song's BPM
@@ -123,6 +124,20 @@ optionally with a length (`4:26`). A `# Setlist: Name` line names the
 playlist; time signatures and notes after ` | ` (from older versions) are
 ignored. The dialog shows how many
 songs it found and how many lines it skipped before you import.
+
+#### Backing up and restoring
+
+**Back up & restore** (in the playlists menu) saves all your playlists to one
+file, `SCBeatWiz playlists YYYY-MM-DD.json`, so they survive a new phone or a
+reinstall:
+
+- **Back up all playlists** — on Android, the system *Save to* screen opens:
+  pick Downloads, Google Drive or another location. On iPhone, the share sheet
+  opens: choose **Save to Files** for iCloud Drive or On My iPhone.
+- **Restore from a file** — pick a backup (or a setlist saved as a `.txt`
+  file). Choose **Add** to keep your playlists and add these, or **Replace
+  all** to swap your playlists for the backup's; *Replace all* can be undone
+  from the message that follows.
 
 ### MIDI
 
@@ -257,7 +272,7 @@ dart run flutter_native_splash:create         # splash screens (flutter_native_s
 lib/
   main.dart             UI and app state: setlists, metronome, graph, mic, MIDI
   playlist.dart         Playlist and song model, JSON storage (pure Dart)
-  playlist_text.dart    Plain-text setlist export and lenient import (pure Dart)
+  playlist_text.dart    Plain-text setlist export, lenient import, backup file (pure Dart)
   tempo_detector.dart   Real-time tempo detection (pure Dart)
   tempo_lock.dart       Decides when the band has locked onto the target tempo
   tempo_drift.dart      Classifies drift from the target (on tempo / drifting / off)
