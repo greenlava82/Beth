@@ -54,3 +54,9 @@ static const BandSyncVector kBandSyncVectors[] = {
 
 static const int kBandSyncVectorCount =
     sizeof(kBandSyncVectors) / sizeof(kBandSyncVectors[0]);
+
+// BandSyncDetails.toBytes() for:
+//   playlist: Friday Gig – Ça va
+//   songs: 5
+static const char kBandSyncDetailsJson[] =
+    "{\"v\":1,\"playlist\":\"Friday Gig \342\200\223 \303\207a va\",\"songs\":[\"Valerie\",\"Don\342\200\231t Stop \\\"Me\\\" Now\",\"Back\\\\slash\",\"\303\234n\303\257c\303\270d\303\251 \360\237\216\270\",\"\"]}";

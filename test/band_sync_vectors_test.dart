@@ -98,6 +98,36 @@ List<_Vector> _vectors() {
   return out;
 }
 
+/// Details as the leader serves them, with characters the CYD's fonts can't
+/// draw and JSON escapes.
+const _details = BandSyncDetails(
+  playlistName: 'Friday Gig – Ça va',
+  songs: [
+    'Valerie',
+    'Don’t Stop "Me" Now',
+    r'Back\slash',
+    'Ünïcødé 🎸',
+    '',
+  ],
+);
+
+/// [bytes] as a C string literal; octal escapes can't run into the next
+/// character the way \x escapes can.
+String _cString(List<int> bytes) {
+  final b = StringBuffer('"');
+  for (final v in bytes) {
+    if (v == 0x22 || v == 0x5C) {
+      b.write('\\${String.fromCharCode(v)}');
+    } else if (v >= 0x20 && v < 0x7F) {
+      b.writeCharCode(v);
+    } else {
+      b.write('\\${v.toRadixString(8).padLeft(3, '0')}');
+    }
+  }
+  b.write('"');
+  return b.toString();
+}
+
 String _hex(int v) => '0x${v.toRadixString(16).padLeft(2, '0').toUpperCase()}';
 
 String _cBool(bool b) => b ? 'true' : 'false';
@@ -166,6 +196,14 @@ String renderHeader() {
     ..writeln(
       'static const int kBandSyncVectorCount =\n'
       '    sizeof(kBandSyncVectors) / sizeof(kBandSyncVectors[0]);',
+    )
+    ..writeln()
+    ..writeln('// BandSyncDetails.toBytes() for:')
+    ..writeln('//   playlist: ${_details.playlistName}')
+    ..writeln('//   songs: ${_details.songs.length}')
+    ..writeln(
+      'static const char kBandSyncDetailsJson[] =\n'
+      '    ${_cString(_details.toBytes())};',
     );
   return b.toString();
 }
