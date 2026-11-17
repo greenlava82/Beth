@@ -1,4 +1,7 @@
 PODS:
+  - bluetooth_low_energy_darwin (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - Flutter (1.0.0)
   - flutter_midi_command (0.4.2):
     - Flutter
@@ -22,6 +25,7 @@ PODS:
     - Flutter
 
 DEPENDENCIES:
+  - bluetooth_low_energy_darwin (from `.symlinks/plugins/bluetooth_low_energy_darwin/darwin`)
   - Flutter (from `Flutter`)
   - flutter_midi_command (from `.symlinks/plugins/flutter_midi_command/ios`)
   - flutter_native_splash (from `.symlinks/plugins/flutter_native_splash/ios`)
@@ -34,6 +38,8 @@ DEPENDENCIES:
   - wakelock_plus (from `.symlinks/plugins/wakelock_plus/ios`)
 
 EXTERNAL SOURCES:
+  bluetooth_low_energy_darwin:
+    :path: ".symlinks/plugins/bluetooth_low_energy_darwin/darwin"
   Flutter:
     :path: Flutter
   flutter_midi_command:
@@ -56,6 +62,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/wakelock_plus/ios"
 
 SPEC CHECKSUMS:
+  bluetooth_low_energy_darwin: 50bc79258e60586e4c4bed5948bd31d925f37fac
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_midi_command: 760f0ec4b7c6d3034982f6045e878d9b7d01674e
   flutter_native_splash: df59bb2e1421aa0282cb2e95618af4dcb0c56c29

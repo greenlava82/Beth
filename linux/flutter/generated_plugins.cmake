@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  bluetooth_low_energy_linux
   flutter_midi_command_linux
   record_linux
   url_launcher_linux
