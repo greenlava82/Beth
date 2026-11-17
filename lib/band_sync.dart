@@ -29,20 +29,32 @@ final UUID _detailsUuid = UUID.fromString(bandSyncDetailsUuid);
 /// permission first where the platform needs it. Returns an error message,
 /// or null when ready.
 Future<String?> _ready(BluetoothLowEnergyManager manager) async {
-  if (manager.state == BluetoothLowEnergyState.unknown) {
-    // Darwin reports the real state shortly after the manager is created.
+  Future<void> waitWhile(BluetoothLowEnergyState s, Duration limit) async {
+    if (manager.state != s) return;
     await manager.stateChanged
-        .firstWhere((e) => e.state != BluetoothLowEnergyState.unknown)
+        .firstWhere((e) => e.state != s)
         .timeout(
-          const Duration(seconds: 3),
+          limit,
           onTimeout: () {
             return BluetoothLowEnergyStateChangedEventArgs(manager.state);
           },
         );
   }
+
+  // The real state arrives shortly after the manager is created; on Darwin
+  // the first use also shows the Bluetooth permission prompt, so allow time
+  // for the user to answer it.
+  await waitWhile(BluetoothLowEnergyState.unknown, const Duration(seconds: 30));
   if (manager.state == BluetoothLowEnergyState.unauthorized &&
       defaultTargetPlatform == TargetPlatform.android) {
-    await manager.authorize();
+    // authorize() returns once the user answers, but the plugin only
+    // refreshes its state when the app resumes after the dialog.
+    if (await manager.authorize()) {
+      await waitWhile(
+        BluetoothLowEnergyState.unauthorized,
+        const Duration(seconds: 3),
+      );
+    }
   }
   return switch (manager.state) {
     BluetoothLowEnergyState.poweredOn => null,
