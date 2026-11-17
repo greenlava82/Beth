@@ -16,8 +16,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scbeatwiz/band_sync_icon.dart';
-import 'package:scbeatwiz/band_sync_icon_view.dart';
+import 'package:beth/band_sync_icon.dart';
+import 'package:beth/band_sync_icon_view.dart';
 
 const _outPath = 'firmware/cyd-follower/src/session_icons.h';
 

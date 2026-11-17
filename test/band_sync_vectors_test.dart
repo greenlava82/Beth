@@ -9,9 +9,9 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scbeatwiz/band_sync_icon.dart';
-import 'package:scbeatwiz/band_sync_protocol.dart';
-import 'package:scbeatwiz/tempo_drift.dart';
+import 'package:beth/band_sync_icon.dart';
+import 'package:beth/band_sync_protocol.dart';
+import 'package:beth/tempo_drift.dart';
 
 const _headerPath = 'firmware/cyd-follower/test/band_sync_vectors.h';
 

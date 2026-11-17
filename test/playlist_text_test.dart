@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scbeatwiz/playlist.dart';
-import 'package:scbeatwiz/playlist_text.dart';
+import 'package:beth/playlist.dart';
+import 'package:beth/playlist_text.dart';
 
 void main() {
   SetlistItem one(String line) {
