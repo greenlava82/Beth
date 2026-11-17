@@ -32,6 +32,8 @@ snaps, solo piano, strummed guitar or a lone bass line.
 - **Nudge (±1, ±5) or capture** the tempo you're hearing to fix up a song's BPM
   on the spot.
 - **MIDI foot-switch support** — any MIDI note or CC advances to the next song.
+- **Band sync** — one phone listens and broadcasts the song, target and heard
+  tempo over Bluetooth; bandmates' phones mirror it. No Wi-Fi or pairing.
 - **Screen stays on** while listening, so it's readable on stage.
 
 ## Using the app
@@ -126,6 +128,33 @@ songs it found and how many lines it skipped before you import.
 
 Connect a MIDI controller or foot switch. Any **Note On** or **Control Change**
 message advances to the next song, just like tapping *Next Song*.
+
+### Band sync
+
+One phone, the **leader**, listens and shares what it hears; the others
+**follow** and show the same song, target, tempo and drift colour.
+
+- **Leader:** tap the band icon (📡) in the top bar → **Lead the band**. The
+  icon becomes a 4-character code (e.g. `2AA8`); the menu shows how many
+  followers have joined. Use the leader's setlist, nudges and MIDI as usual.
+- **Followers:** band icon → **Follow a leader…**. With one leader nearby it
+  joins automatically; otherwise pick the code that matches the leader's
+  screen. Followers don't use their own mic or metronome.
+- While the leader's count-in metronome is running, followers see
+  *Count-in metronome on*; it goes away when the leader's metronome stops
+  (after the band locks on). It's a status line only — followers don't get a
+  click or a flashing beat, since Bluetooth delay would make a mirrored pulse
+  misleading.
+- A follower shows an amber banner if nothing new has arrived for 4 s and a
+  red *Lost the leader* banner after 12 s, so a frozen number never looks
+  live.
+
+It uses Bluetooth LE: the leader broadcasts its state about twice a second
+to any number of followers without connecting; a follower connects once, only
+to read the playlist and song names. The tempo numbers are shared, not the
+beat, so Bluetooth delay doesn't matter. Keep the leader's app on screen —
+phones stop broadcasting in the background. Range is a typical stage (about
+10 m); Bluetooth must be on and allowed for the app.
 
 ### Tips
 
@@ -232,12 +261,16 @@ lib/
   tempo_detector.dart   Real-time tempo detection (pure Dart)
   tempo_lock.dart       Decides when the band has locked onto the target tempo
   tempo_drift.dart      Classifies drift from the target (on tempo / drifting / off)
+  band_sync_protocol.dart  Band sync wire format, details and staleness (pure Dart)
+  band_sync.dart        Bluetooth LE leader broadcast and follower scan
+  band_sync_screen.dart Follower screen
 test/
   playlist_test.dart         Model, JSON and duration tests
   playlist_text_test.dart    Share/import format tests
   tempo_detector_test.dart   Synthetic-audio detection tests
   tempo_lock_test.dart       TempoLock unit tests
   tempo_drift_test.dart      Drift levels and hysteresis tests
+  band_sync_protocol_test.dart  Band sync payload, details and staleness tests
   widget_test.dart           App smoke test
 ```
 

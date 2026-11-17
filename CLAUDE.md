@@ -39,6 +39,23 @@ maintained.
 - `lib/tempo_drift.dart` — `TempoDriftTracker`: on tempo (±2%) / drifting
   (2–5%) / off (>5%) vs the song's BPM, with 1% hysteresis and half/double-time
   handling; drives the readout colour and rushing/dragging badge. Pure Dart.
+- `lib/band_sync_protocol.dart` — band sync wire format, pure Dart. iOS can
+  only advertise a name and service UUIDs, so the leader's live state (session
+  id, sequence, song index, target/heard BPM ×10, confidence, drift, flags,
+  details version, check byte) is packed into the 16 bytes of a 128-bit
+  "service UUID". `BandSyncDetails` (playlist + song names) is JSON read once
+  over GATT; `BandSyncFreshness` (stale 4 s / lost 12 s) counts only new
+  sequence numbers, since the radio repeats the last advertisement.
+- `lib/band_sync.dart` — BLE transport on `bluetooth_low_energy` (MIT):
+  `BandSyncLeader` re-advertises on change plus a 1 s heartbeat and serves the
+  details characteristic; `BandSyncFollower` scans without connecting, tracks
+  leaders by session id (addresses rotate) and restarts the scan every
+  10 min (Android downgrades scans over 30 min). Never pass an advertised
+  name: on Android it renames the phone's Bluetooth adapter.
+- `lib/band_sync_screen.dart` — follower screen; the leader is wired into
+  `main.dart` via `_bandSyncSnapshot()` / `_buildBandMenu()`.
+- `test/band_sync_protocol_test.dart` — payload, UUID, details and freshness
+  tests.
 - `test/tempo_lock_test.dart` — unit tests for `TempoLock`.
 - `test/tempo_drift_test.dart` — unit tests for `TempoDriftTracker`.
 - `test/playlist_test.dart`, `test/playlist_text_test.dart` — model, JSON
@@ -92,6 +109,13 @@ Notes:
 - The app needs the microphone. On the emulator, enable *Virtual microphone
   uses host audio input* (Extended Controls → Microphone). MIDI only really
   works on hardware.
+- Band sync needs two real Bluetooth devices: the iOS simulator and Android
+  emulator have no Bluetooth. The macOS app works as the second device
+  (`flutter build macos --debug`, then `open
+  build/macos/Build/Products/Debug/SCBeatWiz.app`); it has the same
+  advertising limits as an iPhone. Python BLE tools run from Claude's shell
+  are killed by macOS (no Bluetooth permission), and macOS permission
+  prompts and the Pixel's *Nearby devices* prompt are for the user to answer.
 - After `am start`, wait until `adb shell dumpsys window | grep mCurrentFocus`
   shows `bpm_metronome` before tapping or screenshotting; early screenshots are
   black. If the phone is locked, ask the user to unlock it — never enter a PIN.
@@ -121,8 +145,8 @@ Notes:
 ## Making changes
 
 - Detection logic belongs in `tempo_detector.dart` / `tempo_lock.dart` /
-  `tempo_drift.dart`, and
-  playlist data/format logic in `playlist.dart` / `playlist_text.dart` — not
+  `tempo_drift.dart`, band sync format logic in `band_sync_protocol.dart`,
+  and playlist data/format logic in `playlist.dart` / `playlist_text.dart` — not
   `main.dart` — and must come with tests. Keep those files free of Flutter
   imports so they stay fast to unit-test.
 - When tuning the detector, run the full synthetic suite: fixes for one case

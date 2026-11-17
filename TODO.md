@@ -4,46 +4,36 @@ Planning notes to come back to. Started 2026-11-16.
 
 ## Next up
 
-### 1. Band sync (leader → followers)
+### 1. Band sync (leader → followers) — prototype built
 
-Everyone in the band sees the same song, target and detected tempo.
+Built on the `band-sync` branch: one leader broadcasts song, target, heard
+BPM, confidence, drift and count-in state over Bluetooth LE advertisements
+(packed into a 128-bit service UUID, since iOS can't advertise other data);
+followers mirror it without connecting, and connect once to read the playlist
+and song names. See README "Band sync" and `lib/band_sync_protocol.dart`.
 
-**Direction so far**
+Tested: Pixel leader → Mac follower (join, song change, drift, stale/lost
+banners) and Mac leader → Pixel follower (join, song names). The Mac has the
+same advertising limits as an iPhone, so this covers the iOS-leader case.
 
-- **Share numbers, not the pulse.** Song, target BPM, detected BPM, confidence
-  and drift change at most a couple of times a second, so network delay
-  (5–100 ms+ on Wi-Fi/Bluetooth) doesn't matter. A shared visual metronome
-  would need tight clock sync and could mislead if it's even slightly late, so
-  it's out of scope.
-- **One leader** listens (best-placed mic) and controls the setlist.
-  **Followers** mirror the screen: current song, up next, target, detected
-  BPM, drift colour, graph. Followers don't run their own detection (each
-  phone hears a different mix).
-- **The setlist follows the leader:** Next / Previous / jump / MIDI foot
-  switch on the leader moves everyone. Probably the biggest practical win.
-- **The leader pushes the setlist** to followers when they join (reuse the
-  share/JSON format in `lib/playlist_text.dart`).
-- **Followers must show staleness** ("last update 5 s ago" / disconnected) so
-  a frozen reading never looks live.
+**Still to test**
 
-**Transport options** (preferred first)
+- [ ] Real iPhones as leader and follower (only the Mac has been tested).
+- [ ] Range and reliability on a real stage, with several followers.
+- [ ] A full-length set (battery on leader and followers; the follower scan
+      restarts every 10 min).
+- [ ] First-run permission flow on a fresh Android install (fixed, not
+      re-tested) and on iOS.
 
-1. Local Wi-Fi or the leader's phone hotspot: the leader runs a small server,
-   followers join via QR code or room code. Works offline and on iOS and
-   Android.
-2. Bluetooth LE broadcast: no network needed, but iOS restricts advertising
-   (especially in the background), awkward for mixed iPhone/Android bands.
-3. Cloud (e.g. Firebase): simplest to build, but needs internet at the venue
-   and accounts.
-4. Ableton Link: the standard for music apps, but GPL/commercial licence
-   doesn't fit this MIT project, and it's built for beat-phase sync.
+**Ideas / open questions**
 
-**Open questions**
-
-- [ ] Is the band a mix of iPhones and Androids?
-- [ ] Is Wi-Fi reliable at venues, or would one phone act as a hotspot?
-- [ ] Can a follower take over as leader (e.g. leader's battery dies)?
-- [ ] Are followers display-only, or can they nudge/capture too?
+- [ ] Followers could show a tempo graph built from the broadcast readings.
+- [ ] Leader handover if the leader's battery dies (follower becomes leader;
+      a new session code today).
+- [ ] Followers are display-only for now; should they nudge or advance songs?
+- [ ] Leader's app must stay on screen (phones stop broadcasting in the
+      background) — worth a reminder on the leader's screen?
+- [ ] Option to hide song names (followers then show "Song 3").
 
 ### 2. Build-setlist mode (rehearsal)
 
