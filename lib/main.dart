@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:file_selector/file_selector.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -965,7 +968,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       ),
     );
     if (result == null || result.playlists.isEmpty || !mounted) return;
+    _addImportedPlaylists(result);
+  }
 
+  /// Append [result]'s playlists (renamed if a name is taken) and switch to
+  /// the first of them.
+  void _addImportedPlaylists(PlaylistImport result) {
     final first = _playlists.length;
     setState(() {
       for (final p in result.playlists) {
@@ -982,6 +990,166 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     _showSnack('Imported "${_playlists[first].name}" '
         '(${result.songCount} songs'
         '${skipped > 0 ? ', $skipped line${skipped == 1 ? '' : 's'} skipped' : ''})');
+  }
+
+  // ==========================================================================
+  // Backup and restore (all playlists, to a file wherever the system's
+  // pickers can reach: Files / iCloud Drive on iOS, Drive or the phone's
+  // storage on Android)
+  // ==========================================================================
+
+  void _showBackupSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.save_alt),
+              title: const Text('Back up all playlists'),
+              subtitle: const Text('Save a file to the phone, Google Drive, iCloud Drive…'),
+              onTap: () {
+                Navigator.pop(context);
+                _backUpPlaylists();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.restore),
+              title: const Text('Restore from a file'),
+              subtitle: const Text('A backup, or a setlist shared as a file'),
+              onTap: () {
+                Navigator.pop(context);
+                _restoreFromFile();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static const MethodChannel _filesChannel = MethodChannel('scbeatwiz/files');
+
+  /// Saves a backup file. Android: the system "Save to…" picker (Downloads,
+  /// Drive, …; see MainActivity). Elsewhere: the share sheet, whose "Save to
+  /// Files" reaches iCloud Drive and the phone on iOS.
+  Future<void> _backUpPlaylists() async {
+    final now = DateTime.now();
+    final name = backupFileName(now);
+    final bytes =
+        utf8.encode(playlistsToBackup(_playlists, savedAt: now));
+    final n = _playlists.length;
+    final saved = 'Backed up $n playlist${n == 1 ? '' : 's'}';
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final ok = await _filesChannel.invokeMethod<bool>('saveFile', {
+          'name': name,
+          'mimeType': 'application/json',
+          'bytes': bytes,
+        });
+        if (ok == true && mounted) _showSnack('$saved to $name');
+      } on PlatformException catch (e) {
+        if (mounted) _showSnack('Couldn’t save the backup (${e.message})');
+      }
+      return;
+    }
+    final result = await SharePlus.instance.share(ShareParams(
+      files: [XFile.fromData(bytes, mimeType: 'application/json')],
+      fileNameOverrides: [name],
+      subject: name,
+    ));
+    if (!mounted) return;
+    // Only confirm when the platform says a target was picked.
+    if (result.status == ShareResultStatus.success) _showSnack(saved);
+  }
+
+  Future<void> _restoreFromFile() async {
+    const types = XTypeGroup(
+      label: 'SCBeatWiz backups and setlists',
+      extensions: ['json', 'txt'],
+      mimeTypes: ['application/json', 'text/plain', 'application/octet-stream'],
+      uniformTypeIdentifiers: ['public.json', 'public.plain-text'],
+    );
+    final XFile? file;
+    try {
+      file = await openFile(acceptedTypeGroups: const [types]);
+    } catch (e) {
+      _showSnack('Couldn’t open the file picker');
+      return;
+    }
+    if (file == null || !mounted) return;
+    final String text;
+    try {
+      text = await file.readAsString();
+    } catch (_) {
+      if (mounted) _showSnack('Couldn’t read ${file.name}');
+      return;
+    }
+    if (!mounted) return;
+    final result = parsePlaylistText(text,
+        fallbackName: file.name.replaceFirst(RegExp(r'\.[^.]*$'), ''));
+    if (result.playlists.isEmpty) {
+      _showSnack('No playlists found in ${file.name}');
+      return;
+    }
+
+    final n = result.playlists.length;
+    final songs = result.songCount;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(result.isBackup ? 'Restore backup?' : 'Import playlists?'),
+        content: Text(
+          '${file!.name}\n'
+          '$n playlist${n == 1 ? '' : 's'}, $songs song${songs == 1 ? '' : 's'}\n\n'
+          'Add ${n == 1 ? 'it' : 'them'} to your playlists, or replace all '
+          'of your playlists?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'replace'),
+            child: const Text('Replace all'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'add'),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case 'add':
+        _addImportedPlaylists(result);
+      case 'replace':
+        _replacePlaylists(result.playlists);
+    }
+  }
+
+  /// Swap in [playlists] for all of the current ones, with Undo.
+  void _replacePlaylists(List<Playlist> playlists) {
+    final old = _playlists;
+    final oldPlaylist = _currentPlaylistIndex;
+    final oldSong = _currentSetlistIndex;
+    void show(List<Playlist> list, int playlist, int song) {
+      setState(() {
+        _playlists = list;
+        _currentPlaylistIndex = playlist;
+        _currentSetlistIndex = song;
+        _updateMetronomeTempo();
+      });
+      _savePlaylists();
+    }
+
+    show(playlists, 0, 0);
+    final n = playlists.length;
+    _showSnack('Restored $n playlist${n == 1 ? '' : 's'}',
+        undo: () => show(old, oldPlaylist, oldSong));
   }
 
   void _showSnack(String message, {VoidCallback? undo}) {
@@ -1088,6 +1256,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               onTap: () {
                 Navigator.pop(context); // close drawer
                 _showImportDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.backup),
+              title: const Text('Back up & restore'),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _showBackupSheet();
               },
             ),
             const SizedBox(height: 8),

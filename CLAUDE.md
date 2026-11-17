@@ -25,8 +25,17 @@ maintained.
   duration), JSON encode/decode (tolerant of old or partial data — older saves
   may still contain `timeSignature`/`notes`, which are ignored), duration
   helpers. Pure Dart.
-- `lib/playlist_text.dart` — plain-text setlist export (`playlistToText`) and
-  lenient import (`parsePlaylistText`, also accepts the app's JSON). Pure Dart.
+- `lib/playlist_text.dart` — plain-text setlist export (`playlistToText`),
+  lenient import (`parsePlaylistText`, also accepts the app's JSON) and the
+  all-playlists backup (`playlistsToBackup`: JSON tagged
+  `"kind": "scbeatwiz-playlists"`, `"version": 1`; imports set `isBackup` and
+  keep empty playlists). Pure Dart.
+- Backup/restore UI is in `main.dart` (`_showBackupSheet()`). Saving on
+  Android goes through the `scbeatwiz/files` method channel in
+  `MainActivity.kt` (`ACTION_CREATE_DOCUMENT`, i.e. "Save to…" Downloads /
+  Drive); elsewhere through `share_plus` ("Save to Files" on iOS). Restore
+  uses `file_selector`. Don't switch to `file_picker` or `share_plus` 13:
+  they need `win32` 6, which conflicts with `flutter_midi_command`.
 - `lib/tempo_detector.dart` — `TempoDetector`, pure Dart, no Flutter imports.
   Spectral-flux onset detection (2048 FFT, 10 ms hop, log bands) → harmonic-comb
   autocorrelation over the last 8 s → octave choice via a preferred range +
