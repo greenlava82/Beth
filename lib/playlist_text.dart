@@ -6,7 +6,7 @@ import 'playlist.dart';
 ///
 /// Export writes one song per line:
 ///
-///     # SCBeatWiz setlist: Friday Gig
+///     # Beth setlist: Friday Gig
 ///     Superstition, 100, 4:26
 ///     Valerie, 118
 ///
@@ -19,7 +19,7 @@ import 'playlist.dart';
 /// playlist. JSON (a playlist object or a list of them, as stored by the
 /// app) is accepted too, as is a full backup from [playlistsToBackup].
 
-const String _headerPrefix = '# SCBeatWiz setlist: ';
+const String _headerPrefix = '# Beth setlist: ';
 
 /// Renders [playlist] as shareable text.
 String playlistToText(Playlist playlist) {
@@ -36,8 +36,12 @@ String playlistToText(Playlist playlist) {
   return b.toString();
 }
 
-/// Marks a file as a full SCBeatWiz playlist backup.
-const String backupKind = 'scbeatwiz-playlists';
+/// Marks a file as a full Beth playlist backup.
+const String backupKind = 'beth-playlists';
+
+/// Backup tags written by earlier versions (when the app was called
+/// SCBeatWiz); still accepted on import.
+const List<String> legacyBackupKinds = ['scbeatwiz-playlists'];
 
 /// Current backup format version. Readers accept any version and ignore
 /// fields they don't know, so later versions can add fields freely.
@@ -53,10 +57,10 @@ String playlistsToBackup(List<Playlist> playlists, {DateTime? savedAt}) =>
       'playlists': [for (final p in playlists) p.toJson()],
     });
 
-/// "SCBeatWiz playlists 2026-11-17.json" for a backup saved on [date].
+/// "Beth playlists 2026-11-17.json" for a backup saved on [date].
 String backupFileName(DateTime date) {
   String two(int n) => n.toString().padLeft(2, '0');
-  return 'SCBeatWiz playlists '
+  return 'Beth playlists '
       '${date.year}-${two(date.month)}-${two(date.day)}.json';
 }
 
@@ -96,7 +100,8 @@ PlaylistImport parsePlaylistText(String text,
   final songs = <SetlistItem>[];
   final skipped = <String>[];
   final header =
-      RegExp(r'^#\s*(?:SCBeatWiz setlist|setlist|playlist)\s*:\s*(.+)$',
+      RegExp(r'^#\s*(?:Beth setlist|SCBeatWiz setlist|setlist|playlist)'
+          r'\s*:\s*(.+)$',
           caseSensitive: false);
 
   for (final raw in const LineSplitter().convert(text)) {
@@ -126,7 +131,9 @@ PlaylistImport parsePlaylistText(String text,
 List<Playlist>? _tryBackup(String text) {
   try {
     final decoded = jsonDecode(text);
-    if (decoded is! Map || decoded['kind'] != backupKind) return null;
+    if (decoded is! Map) return null;
+    final kind = decoded['kind'];
+    if (kind != backupKind && !legacyBackupKinds.contains(kind)) return null;
     final list = decoded['playlists'];
     if (list is! List) return null;
     final playlists = [
