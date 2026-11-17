@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <driver/gpio.h>
+
+#include "branding_images.h"
 #include <string.h>
 
 using bandsync::Drift;
@@ -36,6 +38,8 @@ constexpr uint16_t kDim = rgb(0x30, 0x30, 0x38);
 constexpr uint16_t kBg = rgb(0x12, 0x10, 0x18);
 constexpr uint16_t kBannerAmber = rgb(0xFF, 0x6F, 0x00);
 constexpr uint16_t kBannerRed = rgb(0xB7, 0x1C, 0x1C);
+static_assert(kBg == kBrandingBackground,
+              "regenerate branding_images.h for the new background");
 
 // RGB LED on the back, active low.
 constexpr int kLedR = 4;
@@ -65,15 +69,34 @@ uint16_t driftColor(Drift d) {
 // Every draw function takes the canvas and the y offset of the strip being
 // rendered (0, -80, -160); anything outside the strip is clipped.
 
+// Draws a run-length encoded image (see branding_images.h) with its top
+// left at x, y. Background runs are skipped: the strip is already filled.
+void drawRle(TFT_eSPI& c, const uint16_t* runs, int length, int size, int x,
+             int y) {
+  int px = 0;
+  int py = 0;
+  for (int i = 0; i + 1 < length; i += 2) {
+    const int count = runs[i];
+    const uint16_t colour = runs[i + 1];
+    if (colour != kBg) c.drawFastHLine(x + px, y + py, count, colour);
+    px += count;
+    if (px >= size) {
+      px = 0;
+      py++;
+    }
+  }
+}
+
 void drawSearching(TFT_eSPI& c, int oy) {
+  drawRle(c, kLogo, kLogoLength, kLogoSize, (kW - kLogoSize) / 2, 14 + oy);
   c.setTextDatum(MC_DATUM);
   c.setTextColor(TFT_WHITE, kBg);
-  c.drawString("Looking for a leader...", kW / 2, 90 + oy, 4);
+  c.drawString("Looking for a leader...", kW / 2, 130 + oy, 4);
   c.setTextColor(kGrey, kBg);
-  c.drawString("On the leader's phone, tap the band", kW / 2, 140 + oy, 2);
-  c.drawString("icon and choose \"Lead the band\".", kW / 2, 160 + oy, 2);
-  c.drawString("Sleeps after a minute without a leader;", kW / 2, 206 + oy, 1);
-  c.drawString("hold the screen to sleep now.", kW / 2, 220 + oy, 1);
+  c.drawString("On the leader's phone, tap the band", kW / 2, 160 + oy, 2);
+  c.drawString("icon and choose \"Lead the band\".", kW / 2, 178 + oy, 2);
+  c.drawString("Sleeps after a minute without a leader;", kW / 2, 210 + oy, 1);
+  c.drawString("hold the screen to sleep now.", kW / 2, 224 + oy, 1);
 }
 
 void drawMessage(TFT_eSPI& c, const char* title, const char* detail,
@@ -139,7 +162,7 @@ void drawHeader(TFT_eSPI& c, const View& v, int oy) {
     }
   }
   c.setTextDatum(MR_DATUM);
-  c.setTextColor(rightColor, kBg);
+  c.setTextColor(rightColor);
   c.drawString(right, kW - 8, 12 + oy, 2);
   const int rightW = right[0] ? c.textWidth(right, 2) + 12 : 0;
 
@@ -154,7 +177,7 @@ void drawHeader(TFT_eSPI& c, const View& v, int oy) {
   if (v.playlist[0]) snprintf(left + n, sizeof left - n, " - %s", v.playlist);
   char fitted[96];
   fitText(c, left, 2, kW - 16 - rightW, fitted, sizeof fitted);
-  c.setTextColor(kGrey, kBg);
+  c.setTextColor(kGrey);
   c.setTextDatum(ML_DATUM);
   c.drawString(fitted, 8, 12 + oy, 2);
 }
@@ -162,6 +185,11 @@ void drawHeader(TFT_eSPI& c, const View& v, int oy) {
 void drawMirror(TFT_eSPI& c, const View& v, int oy) {
   const auto& s = v.state;
   const bool live = v.link == Link::Live;
+
+  // The mark, faint, behind everything; text is drawn without background
+  // boxes so it shows through.
+  drawRle(c, kLogoFaint, kLogoFaintLength, kLogoFaintSize,
+          (kW - kLogoFaintSize) / 2, (kH - kLogoFaintSize) / 2 + oy);
 
   if (live) {
     drawHeader(c, v, oy);
@@ -179,9 +207,9 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
       strlcpy(buf, "--", sizeof buf);
     }
     c.setTextDatum(MR_DATUM);
-    c.setTextColor(TFT_WHITE, kBg);
+    c.setTextColor(TFT_WHITE);
     c.drawString(buf, kW - 8, 42 + oy, 4);
-    c.setTextColor(kGrey, kBg);
+    c.setTextColor(kGrey);
     c.setTextDatum(TR_DATUM);
     c.drawString("target", kW - 8, 57 + oy, 1);
     targetW = max(c.textWidth(buf, 4), c.textWidth("target", 1)) + 14;
@@ -204,7 +232,7 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
   const int songFont = smallNote ? 2 : 4;
   fitText(c, songText, songFont, kW - 16 - targetW, fitted, sizeof fitted);
   c.setTextDatum(ML_DATUM);
-  c.setTextColor(smallNote ? kGrey : TFT_WHITE, kBg);
+  c.setTextColor(smallNote ? kGrey : TFT_WHITE);
   c.drawString(fitted, 8, 42 + oy, songFont);
 
   // Up next, small, under the song name.
@@ -212,28 +240,28 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
     char next[96];
     snprintf(next, sizeof next, "Next: %s", v.next);
     fitText(c, next, 2, kW - 16 - targetW, fitted, sizeof fitted);
-    c.setTextColor(kGrey, kBg);
+    c.setTextColor(kGrey);
     c.drawString(fitted, 8, 66 + oy, 2);
   }
 
   // The heard tempo, big, in the leader's drift colour.
   const uint16_t color = live ? driftColor(s.drift) : kGrey;
   c.setTextDatum(MC_DATUM);
-  c.setTextColor(color, kBg);
+  c.setTextColor(color);
   if (s.hasHeard()) {
     snprintf(buf, sizeof buf, "%u.%u", s.heard10 / 10, s.heard10 % 10);
     c.drawString(buf, kW / 2, 118 + oy, 8);
   } else {
     c.drawString("--", kW / 2, 118 + oy, 8);
   }
-  c.setTextColor(kGrey, kBg);
+  c.setTextColor(kGrey);
   c.drawString(s.hasHeard() ? "BPM heard" : "leader is listening...", kW / 2,
                166 + oy, 2);
 
   // Rushing / dragging, as on the app's follower screen.
   if (live && s.drift != Drift::None && s.hasHeard() && s.hasTarget() &&
       !s.freeRunning) {
-    c.setTextColor(color, kBg);
+    c.setTextColor(color);
     if (s.drift == Drift::OnTempo) {
       c.drawString("on tempo", kW / 2, 190 + oy, 4);
     } else {
@@ -260,7 +288,7 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
                                                   : kRed;
   c.fillRect(barX, 216 + oy, barW, 5, kDim);
   c.fillRect(barX, 216 + oy, barW * s.confidence / 255, 5, barColor);
-  c.setTextColor(kGrey, kBg);
+  c.setTextColor(kGrey);
   c.drawString(v.otherLeaders > 0
                    ? "confidence  -  tap the screen to switch leader"
                    : "confidence",
