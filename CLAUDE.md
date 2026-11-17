@@ -65,6 +65,30 @@ maintained.
   `main.dart` via `_bandSyncSnapshot()` / `_buildBandMenu()`.
 - `test/band_sync_protocol_test.dart` — payload, UUID, details and freshness
   tests.
+- `test/band_sync_vectors_test.dart` — generates
+  `firmware/cyd-follower/test/band_sync_vectors.h` from the Dart encoder and
+  fails if it's stale. After a protocol change run
+  `UPDATE_VECTORS=1 flutter test test/band_sync_vectors_test.dart`, then update
+  the firmware decoder to match.
+- `firmware/cyd-follower/` — PlatformIO (Arduino, NimBLE, TFT_eSPI) band sync
+  follower for the ESP32 "Cheap Yellow Display"; see its README. Its decoder
+  (`lib/band_sync/`) is a C++ port of `band_sync_protocol.dart`; keep them
+  in step. `pio test -e native` runs its tests on the Mac;
+  `pio run -t upload` flashes (CYD on `/dev/cu.usbserial-*`, 460800 baud).
+  The tested board (micro-USB + USB-C) has an ILI9341, not an ST7789, and an
+  8-bit TFT_eSPI sprite gives it wrong colours: draw through the 16-bit
+  strip. Only the user can see the screen, so ask them what it shows.
+- CYD touch uses the XPT2046_Touchscreen library on VSPI (a hand-rolled
+  bit-banged reader gave garbage mid-screen). Calibrate from the raw values
+  a `-DTOUCH_DEBUG=1` build logs while pressed; ask the user to press and
+  hold the centre and each corner in turn.
+- CYD sleep is ESP32 deep sleep woken by the touch panel's IRQ (GPIO 36,
+  ext0). `displayOff()` holds the backlight and LED pins off during sleep;
+  `displayBegin()` releases them. Taps act on release, so a long hold can
+  mean sleep.
+- An Android leader's Bluetooth address changes on every re-advertise
+  (each update), so a GATT connection must use the address from the
+  newest advertisement immediately; a cached address times out.
 - `test/tempo_lock_test.dart` — unit tests for `TempoLock`.
 - `test/tempo_drift_test.dart` — unit tests for `TempoDriftTracker`.
 - `test/playlist_test.dart`, `test/playlist_text_test.dart` — model, JSON
@@ -136,6 +160,10 @@ Notes:
 - Source of truth is `tool/render_branding_test.dart`, which draws the mark
   with Flutter's canvas into `assets/branding/*.png` (no image tools needed).
   Colours: background `#1E1846`, lavender `#CFBCFF`, amber `#FFD180`.
+- The same script writes the CYD follower's logo
+  (`firmware/cyd-follower/src/branding_images.h`, run-length RGB565 blended
+  onto the CYD's `#121018` background, full and 11% strength). Reflash the
+  CYD after changing the mark; `display.cpp` checks the background matches.
 - Regenerate in order:
   `flutter test tool/render_branding_test.dart`, then
   `dart run flutter_launcher_icons`, then `dart run flutter_native_splash:create`.
