@@ -86,6 +86,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Count-in: the metronome auto-starts on a new song and pauses itself
   // once the band's detected tempo locks onto the song's marking.
   final TempoLock _tempoLock = TempoLock();
+  // After the lock, the metronome keeps going this long before it stops,
+  // so the band gets a few more clicks once they're on tempo.
+  static const Duration _runOnAfterLock = Duration(seconds: 3);
+  Timer? _lockStopTimer;
   // How far the heard tempo is from the song's target (null = no reading).
   final TempoDriftTracker _driftTracker = TempoDriftTracker();
   // Free-running mode: no song target; the detector leans toward the most
@@ -376,9 +380,23 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
+  /// Cancel a pending post-lock stop (the user or a song change took over).
+  void _cancelLockStop() {
+    _lockStopTimer?.cancel();
+    _lockStopTimer = null;
+  }
+
   void _toggleMetronome() {
-    // Manual control wins: don't auto-pause a metronome the user started.
-    _tempoLock.disarm();
+    _cancelLockStop();
+    // Starting the metronome is a count-in, just like changing song: watch
+    // for the band to lock onto the target and pause it then. Stopping it
+    // cancels the watch.
+    final target = _currentTargetBpm;
+    if (!_isMetronomePlaying && target != null) {
+      _tempoLock.arm(target);
+    } else {
+      _tempoLock.disarm();
+    }
     setState(() {
       _isMetronomePlaying = !_isMetronomePlaying;
       _updateMetronomeTempo();
@@ -389,6 +407,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   /// count-in lock, drop the song target, and weight detection toward the
   /// most common tempos. Off: back to the current song's target and range.
   void _setFreeRunning(bool on) {
+    _cancelLockStop();
     setState(() {
       _freeRunning = on;
       _driftTracker.reset();
@@ -412,6 +431,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (playlist.items.isEmpty) return;
     // Picking a song means playing to its target again.
     if (_freeRunning) _setFreeRunning(false);
+    _cancelLockStop();
     setState(() {
       _currentSetlistIndex = index.clamp(0, playlist.items.length - 1);
       _isMetronomePlaying = true;
@@ -620,16 +640,23 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               confidence: _detectionConfidence);
     });
 
-    if (_isMetronomePlaying && _tempoLock.update(now, DateTime.now())) {
-      setState(() {
-        _isMetronomePlaying = false;
-        _updateMetronomeTempo();
-      });
+    if (_isMetronomePlaying &&
+        _lockStopTimer == null &&
+        _tempoLock.update(now, DateTime.now())) {
+      // Locked on: let the metronome run a little longer, then stop it.
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Locked on ${now!.bpm.toStringAsFixed(1)} BPM — metronome paused'),
-        duration: const Duration(seconds: 3),
+        content: Text('Locked on ${now!.bpm.toStringAsFixed(1)} BPM — '
+            'metronome stops in ${_runOnAfterLock.inSeconds} s'),
+        duration: _runOnAfterLock,
       ));
+      _lockStopTimer = Timer(_runOnAfterLock, () {
+        _lockStopTimer = null;
+        if (!mounted || !_isMetronomePlaying) return;
+        setState(() {
+          _isMetronomePlaying = false;
+          _updateMetronomeTempo();
+        });
+      });
     }
   }
 
@@ -637,6 +664,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _chartTimer?.cancel();
+    _lockStopTimer?.cancel();
     _audioStreamSub?.cancel();
     _audioRecorder.dispose();
     _midiSub?.cancel();
