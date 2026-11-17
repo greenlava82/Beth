@@ -12,6 +12,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'band_sync.dart';
+import 'band_sync_protocol.dart';
+import 'band_sync_screen.dart';
 import 'playlist.dart';
 import 'playlist_text.dart';
 import 'tempo_detector.dart';
@@ -103,6 +106,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   static const double _rangeLimitMax = 220;
   RangeValues _preferredRange = const RangeValues(90, 160);
 
+  // Band sync: this phone can broadcast its song and tempo to bandmates.
+  late final BandSyncLeader _bandLeader = BandSyncLeader(_bandSyncSnapshot);
+
   // MIDI
   final MidiCommand _midiCommand = MidiCommand();
   StreamSubscription<MidiPacket>? _midiSub;
@@ -111,6 +117,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _bandLeader.addListener(_onBandLeaderChanged);
     _loadPlaylists();
     _setupMetronome();
     _setupMidi();
@@ -669,8 +676,110 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     _audioRecorder.dispose();
     _midiSub?.cancel();
     _metronomeController.dispose();
+    _bandLeader.removeListener(_onBandLeaderChanged);
+    _bandLeader.dispose();
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  // ==========================================================================
+  // Band sync
+  // ==========================================================================
+
+  void _onBandLeaderChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// What the leader broadcasts: polled a few times a second by
+  /// [BandSyncLeader], which only re-advertises when something changed.
+  BandSyncSnapshot _bandSyncSnapshot() {
+    final playlist = _playlists[_currentPlaylistIndex];
+    final details = BandSyncDetails(
+        playlistName: playlist.name,
+        songs: [for (final song in playlist.items) song.name]);
+    final hasSong = !_freeRunning && playlist.items.isNotEmpty;
+    return (
+      details: details,
+      state: BandSyncState(
+        sessionId: 0,
+        metronomePlaying: _isMetronomePlaying,
+        freeRunning: _freeRunning,
+        drift: _drift?.level,
+        rushing: _drift?.isRushing ?? false,
+        songIndex: hasSong ? _currentSetlistIndex : null,
+        targetBpm: _currentTargetBpm,
+        detectedBpm: _currentCalculatedBpm > 0 ? _currentCalculatedBpm : null,
+        confidence: _isRecording ? _detectionConfidence : 0,
+        detailsVersion: detailsVersionOf(details),
+      ),
+    );
+  }
+
+  Future<void> _toggleLeading() async {
+    if (_bandLeader.isActive) {
+      await _bandLeader.stop();
+      _showSnack('Stopped leading the band');
+      return;
+    }
+    final error = await _bandLeader.start();
+    _showSnack(error ??
+        'Leading the band as ${_bandLeader.code} — bandmates choose '
+            '“Follow a leader”');
+  }
+
+  /// Followers mirror the leader instead of listening themselves, so the
+  /// mic, metronome and any broadcast stop while the follower screen is up.
+  Future<void> _openFollower() async {
+    if (_bandLeader.isActive) await _bandLeader.stop();
+    final wasRecording = _isRecording;
+    if (wasRecording) _stopRecording();
+    if (_isMetronomePlaying) _toggleMetronome();
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => const BandSyncFollowerScreen()));
+    if (wasRecording && mounted) _startRecording();
+  }
+
+  Widget _buildBandMenu() {
+    final leading = _bandLeader.isActive;
+    return PopupMenuButton<void Function()>(
+      tooltip: 'Band sync',
+      onSelected: (action) => action(),
+      itemBuilder: (context) => [
+        CheckedPopupMenuItem(
+          value: _toggleLeading,
+          checked: leading,
+          child: Text(leading
+              ? 'Leading as ${_bandLeader.code}'
+                  '${_bandLeader.joinedCount > 0 ? ' · ${_bandLeader.joinedCount} joined' : ''}'
+              : 'Lead the band'),
+        ),
+        PopupMenuItem(
+          value: _openFollower,
+          child: const ListTile(
+            leading: Icon(Icons.groups),
+            title: Text('Follow a leader…'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
+      // While leading, show the code so bandmates can check they joined
+      // the right phone.
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: leading
+            ? Chip(
+                avatar: Icon(Icons.podcasts,
+                    size: 18,
+                    color: _bandLeader.error == null
+                        ? Colors.amberAccent
+                        : Colors.redAccent),
+                label: Text(_bandLeader.code),
+                visualDensity: VisualDensity.compact,
+              )
+            : const Icon(Icons.podcasts),
+      ),
+    );
   }
 
   // ==========================================================================
@@ -1392,6 +1501,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         title: Text(_freeRunning ? 'Free running' : playlist.name,
             overflow: TextOverflow.ellipsis),
         actions: [
+          _buildBandMenu(),
           IconButton(
             tooltip: _freeRunning ? 'Back to setlist' : 'Free-running mode',
             icon: Icon(_freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
