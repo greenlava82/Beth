@@ -267,7 +267,10 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
 
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
+    // Stretch: the body's width is loose, so without it the content shrinks
+    // to its widest line and sits at the left edge.
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _linkBanner(link),
         Expanded(
