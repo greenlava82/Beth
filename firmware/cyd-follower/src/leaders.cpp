@@ -1,6 +1,7 @@
 #include "leaders.h"
 
-void Leaders::heard(const bandsync::State& s, int rssi, uint32_t nowMs) {
+void Leaders::heard(const bandsync::State& s, int rssi,
+                    const NimBLEAddress& address, uint32_t nowMs) {
   portENTER_CRITICAL(&lock_);
   LeaderInfo* slot = nullptr;
   for (auto& l : slots_) {
@@ -26,6 +27,7 @@ void Leaders::heard(const bandsync::State& s, int rssi, uint32_t nowMs) {
   slot->state = s;
   slot->freshness.heard(s, nowMs);
   slot->rssi = rssi;
+  slot->address = address;
   slot->lastSeenMs = nowMs;
   portEXIT_CRITICAL(&lock_);
 }

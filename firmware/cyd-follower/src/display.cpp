@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <TFT_eSPI.h>
+#include <string.h>
 
 using bandsync::Drift;
 using bandsync::Link;
@@ -90,26 +91,60 @@ void drawBanner(TFT_eSPI& c, const View& v, int oy) {
   c.drawString(text, kW / 2, 12 + oy, 2);
 }
 
+// Cuts text to fit maxW pixels in font, ending in "..." when cut.
+void fitText(TFT_eSPI& c, const char* text, int font, int maxW, char* out,
+             size_t n) {
+  strlcpy(out, text, n);
+  if (c.textWidth(out, font) <= maxW) return;
+  size_t len = strlen(out);
+  while (len > 0) {
+    out[--len] = '\0';
+    while (len > 0 && out[len - 1] == ' ') out[--len] = '\0';
+    char trial[96];
+    snprintf(trial, sizeof trial, "%s...", out);
+    if (c.textWidth(trial, font) <= maxW) {
+      strlcpy(out, trial, n);
+      return;
+    }
+  }
+}
+
 void drawHeader(TFT_eSPI& c, const View& v, int oy) {
   const auto& s = v.state;
+
+  // Right: the count-in while it runs, else the song number.
+  char right[24] = "";
+  uint16_t rightColor = kGrey;
+  if (s.playing) {
+    strlcpy(right, "COUNT-IN", sizeof right);
+    rightColor = kTeal;
+  } else if (!s.freeRunning && s.songIndex >= 0) {
+    if (v.songCount > 0) {
+      snprintf(right, sizeof right, "Song %d of %d", s.songIndex + 1,
+               v.songCount);
+    } else {
+      snprintf(right, sizeof right, "Song %d", s.songIndex + 1);
+    }
+  }
+  c.setTextDatum(MR_DATUM);
+  c.setTextColor(rightColor, kBg);
+  c.drawString(right, kW - 8, 12 + oy, 2);
+  const int rightW = right[0] ? c.textWidth(right, 2) + 12 : 0;
+
+  // Left: the leader's code, other leaders, and the playlist.
   char code[5];
   bandsync::sessionCode(s.sessionId, code);
-  char left[32];
+  char left[96];
+  int n = snprintf(left, sizeof left, "%s", code);
   if (v.otherLeaders > 0) {
-    snprintf(left, sizeof left, "Leader %s  (+%d nearby)", code,
-             v.otherLeaders);
-  } else {
-    snprintf(left, sizeof left, "Leader %s", code);
+    n += snprintf(left + n, sizeof left - n, " (+%d)", v.otherLeaders);
   }
+  if (v.playlist[0]) snprintf(left + n, sizeof left - n, " - %s", v.playlist);
+  char fitted[96];
+  fitText(c, left, 2, kW - 16 - rightW, fitted, sizeof fitted);
   c.setTextColor(kGrey, kBg);
   c.setTextDatum(ML_DATUM);
-  c.drawString(left, 8, 12 + oy, 2);
-  if (!s.freeRunning && s.songIndex >= 0) {
-    char song[16];
-    snprintf(song, sizeof song, "Song %d", s.songIndex + 1);
-    c.setTextDatum(MR_DATUM);
-    c.drawString(song, kW - 8, 12 + oy, 2);
-  }
+  c.drawString(fitted, 8, 12 + oy, 2);
 }
 
 void drawMirror(TFT_eSPI& c, const View& v, int oy) {
@@ -122,22 +157,51 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
     drawBanner(c, v, oy);
   }
 
-  // Target line, and the count-in state on the right.
-  char buf[32];
-  c.setTextDatum(ML_DATUM);
-  c.setTextColor(TFT_WHITE, kBg);
-  if (s.freeRunning) {
-    c.drawString("Free running", 8, 44 + oy, 4);
-  } else if (s.hasTarget()) {
-    snprintf(buf, sizeof buf, "Target %u", (s.target10 + 5) / 10);
-    c.drawString(buf, 8, 44 + oy, 4);
-  } else {
-    c.drawString("No target", 8, 44 + oy, 4);
-  }
-  if (s.playing) {
+  // Song line: the name on the left, the song's target on the right.
+  char buf[96];
+  int targetW = 0;
+  if (!s.freeRunning) {
+    if (s.hasTarget()) {
+      snprintf(buf, sizeof buf, "%u", (s.target10 + 5) / 10);
+    } else {
+      strlcpy(buf, "--", sizeof buf);
+    }
     c.setTextDatum(MR_DATUM);
-    c.setTextColor(kTeal, kBg);
-    c.drawString("COUNT-IN", kW - 8, 44 + oy, 2);
+    c.setTextColor(TFT_WHITE, kBg);
+    c.drawString(buf, kW - 8, 42 + oy, 4);
+    c.setTextColor(kGrey, kBg);
+    c.setTextDatum(TR_DATUM);
+    c.drawString("target", kW - 8, 57 + oy, 1);
+    targetW = max(c.textWidth(buf, 4), c.textWidth("target", 1)) + 14;
+  }
+  const char* songText;
+  if (s.freeRunning) {
+    songText = "Free running";
+  } else if (v.song[0]) {
+    songText = v.song;
+  } else if (v.readingDetails) {
+    songText = "Getting song names...";
+  } else if (s.songIndex >= 0) {
+    snprintf(buf, sizeof buf, "Song %d", s.songIndex + 1);
+    songText = buf;
+  } else {
+    songText = "No song";
+  }
+  char fitted[96];
+  const bool smallNote = !s.freeRunning && !v.song[0] && v.readingDetails;
+  const int songFont = smallNote ? 2 : 4;
+  fitText(c, songText, songFont, kW - 16 - targetW, fitted, sizeof fitted);
+  c.setTextDatum(ML_DATUM);
+  c.setTextColor(smallNote ? kGrey : TFT_WHITE, kBg);
+  c.drawString(fitted, 8, 42 + oy, songFont);
+
+  // Up next, small, under the song name.
+  if (!s.freeRunning && v.next[0]) {
+    char next[96];
+    snprintf(next, sizeof next, "Next: %s", v.next);
+    fitText(c, next, 2, kW - 16 - targetW, fitted, sizeof fitted);
+    c.setTextColor(kGrey, kBg);
+    c.drawString(fitted, 8, 66 + oy, 2);
   }
 
   // The heard tempo, big, in the leader's drift colour.
@@ -146,13 +210,13 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
   c.setTextColor(color, kBg);
   if (s.hasHeard()) {
     snprintf(buf, sizeof buf, "%u.%u", s.heard10 / 10, s.heard10 % 10);
-    c.drawString(buf, kW / 2, 112 + oy, 8);
+    c.drawString(buf, kW / 2, 118 + oy, 8);
   } else {
-    c.drawString("--", kW / 2, 112 + oy, 8);
+    c.drawString("--", kW / 2, 118 + oy, 8);
   }
   c.setTextColor(kGrey, kBg);
   c.drawString(s.hasHeard() ? "BPM heard" : "leader is listening...", kW / 2,
-               162 + oy, 2);
+               166 + oy, 2);
 
   // Rushing / dragging, as on the app's follower screen.
   if (live && s.drift != Drift::None && s.hasHeard() && s.hasTarget() &&
@@ -227,7 +291,10 @@ bool View::operator==(const View& o) const {
          a.playing == b.playing && a.freeRunning == b.freeRunning &&
          a.rushing == b.rushing && a.drift == b.drift &&
          a.songIndex == b.songIndex && a.target10 == b.target10 &&
-         a.heard10 == b.heard10 && a.confidence == b.confidence;
+         a.heard10 == b.heard10 && a.confidence == b.confidence &&
+         songCount == o.songCount && readingDetails == o.readingDetails &&
+         strcmp(playlist, o.playlist) == 0 && strcmp(song, o.song) == 0 &&
+         strcmp(next, o.next) == 0;
 }
 
 void displayBegin() {
