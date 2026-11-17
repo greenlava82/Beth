@@ -9,7 +9,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
 
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const SCBeatWizApp());
+    await tester.pumpWidget(const BethApp());
     await tester.pump(const Duration(seconds: 1));
 
     // Verify that our title is present.
