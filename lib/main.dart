@@ -1069,7 +1069,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
-  static const MethodChannel _filesChannel = MethodChannel('scbeatwiz/files');
+  static const MethodChannel _filesChannel = MethodChannel('beth/files');
 
   /// Saves a backup file. Android: the system "Save to…" picker (Downloads,
   /// Drive, …; see MainActivity). Elsewhere: the share sheet, whose "Save to
