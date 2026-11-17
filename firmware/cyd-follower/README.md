@@ -25,11 +25,24 @@ counts it as joined), and again only when the leader's setlist changes.
 Accents and typographic quotes are simplified for the screen's fonts
 (*Ça va* shows as *Ca va*); emoji show as `?`.
 
-It follows the strongest leader it hears, and switches by itself when that
-leader is lost and another is broadcasting (for example after the leader
-stops and starts leading again, which picks a new code).
+## Choosing a leader
 
-Not yet: touch to choose between several leaders.
+Like the phone follower, it joins by itself when only one leader is nearby
+(it listens for 2 s first, so every nearby leader has a chance to be heard).
+With several, it shows **Choose a leader**: one row per leader with its
+code, song, target, heard tempo and signal strength. Tap the code that
+matches the leader's phone.
+
+While following, the bottom line says *tap the screen to switch leader*
+when another leader is around. Tap anywhere to open the list (the current
+leader is marked *FOLLOWING*), then pick another or tap **Back**. The list
+closes by itself after 20 s untouched.
+
+If the leader is lost (12 s with no news), it switches by itself when exactly
+one other leader is live (for example after the leader stops and starts
+leading again, which picks a new code), and asks when there are several.
+
+The touch panel is resistive: press firmly with a fingernail or stylus.
 
 ## Build and flash
 
@@ -56,6 +69,12 @@ tested on (micro-USB + USB-C), which has an ILI9341 controller:
   `ILI9341_2_DRIVER` line for `ST7789_DRIVER`.
 - **Light background, odd colours:** the panel is inverted; call
   `tft.invertDisplay(true)` after `tft.init()` in `src/display.cpp`.
+- **Taps land in the wrong place:** build with `-DTOUCH_DEBUG=1` (for
+  example `PLATFORMIO_BUILD_FLAGS=-DTOUCH_DEBUG=1 pio run -t upload`). The
+  serial log then prints raw readings while the screen is pressed. Press
+  near each edge and set `TOUCH_LEFT` / `TOUCH_RIGHT` / `TOUCH_TOP` /
+  `TOUCH_BOTTOM` in `src/touch.cpp` (or as build flags) to the raw values
+  at the edges.
 
 The screen is drawn a third at a time into a 16-bit buffer. A whole-screen
 8-bit buffer showed wrong colours on this board, so don't switch back to one.
@@ -67,10 +86,13 @@ The screen is drawn a third at a time into a 16-bit buffer. A whole-screen
   text cleanup for the fonts. No Arduino dependencies.
 - `src/leaders.*` — leaders heard nearby, by session id (thread-safe; the
   BLE scan runs on its own task).
-- `src/display.*` — the screen layout and the RGB LED.
+- `src/display.*` — the screen layouts (follower and leader list) and the
+  RGB LED.
+- `src/touch.*` — the XPT2046 touch panel on its own SPI bus, mapped to
+  screen pixels.
 - `src/main.cpp` — passive NimBLE scan (no duplicate filtering, so every
-  repeat is seen), choosing a leader, reading the names, redrawing only when
-  something shown changes.
+  repeat is seen), choosing a leader and handling taps, reading the names,
+  redrawing only when something shown changes.
 - `test/band_sync_vectors.h` — **generated** from the app's encoder by
   `test/band_sync_vectors_test.dart` in the app; `flutter test` fails if it's
   out of date. Regenerate with

@@ -78,6 +78,10 @@ maintained.
   The tested board (micro-USB + USB-C) has an ILI9341, not an ST7789, and an
   8-bit TFT_eSPI sprite gives it wrong colours: draw through the 16-bit
   strip. Only the user can see the screen, so ask them what it shows.
+- CYD touch uses the XPT2046_Touchscreen library on VSPI (a hand-rolled
+  bit-banged reader gave garbage mid-screen). Calibrate from the raw values
+  a `-DTOUCH_DEBUG=1` build logs while pressed; ask the user to press and
+  hold the centre and each corner in turn.
 - An Android leader's Bluetooth address changes on every re-advertise
   (each update), so a GATT connection must use the address from the
   newest advertisement immediately; a cached address times out.
