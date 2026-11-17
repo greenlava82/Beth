@@ -1,16 +1,16 @@
 <p align="center">
-  <img src="assets/branding/icon.png" alt="SCBeatWiz icon" width="128">
+  <img src="assets/branding/icon.png" alt="Beth icon" width="128">
 </p>
 
-# SCBeatWiz
+# Beth
 
-**A setlist metronome that listens.** SCBeatWiz counts your band in at each
+**A setlist metronome that listens.** Beth counts your band in at each
 song's tempo, then listens through the microphone and shows the tempo you're
 *actually* playing — live, for any kind of music: full drum kits, finger
 snaps, solo piano, strummed guitar or a lone bass line.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="SCBeatWiz main screen: detected tempo over a history graph, the metronome with nudge buttons, and the current song" width="300">
+  <img src="docs/screenshot.png" alt="Beth main screen: detected tempo over a history graph, the metronome with nudge buttons, and the current song" width="300">
 </p>
 
 ## Features
@@ -42,7 +42,7 @@ snaps, solo piano, strummed guitar or a lone bass line.
 On first launch, allow microphone access. The app starts listening right away
 (the 🎤 icon in the top bar turns listening on and off).
 
-The top bar shows the current playlist's name. Tap the **SCBeatWiz logo**
+The top bar shows the current playlist's name. Tap the **Beth logo**
 (top left) to open your playlists. Turn the phone sideways for a
 **landscape layout**: the graph on the left, the metronome and setlist on the
 right.
@@ -97,7 +97,7 @@ metronome yourself cancels the auto-stop.
 
 ### Setlists
 
-Tap the **SCBeatWiz logo** (top left) to switch playlists, create a new one, or
+Tap the **Beth logo** (top left) to switch playlists, create a new one, or
 import one.
 Long-press and drag to reorder playlists. Each playlist's **⋮** menu has:
 
@@ -112,7 +112,7 @@ Long-press and drag to reorder playlists. Each playlist's **⋮** menu has:
 *Share* sends a readable list your bandmates can use as-is:
 
 ```
-# SCBeatWiz setlist: Friday Gig
+# Beth setlist: Friday Gig
 Superstition, 100, 4:26
 Valerie, 118
 ```
@@ -128,7 +128,7 @@ songs it found and how many lines it skipped before you import.
 #### Backing up and restoring
 
 **Back up & restore** (in the playlists menu) saves all your playlists to one
-file, `SCBeatWiz playlists YYYY-MM-DD.json`, so they survive a new phone or a
+file, `Beth playlists YYYY-MM-DD.json`, so they survive a new phone or a
 reinstall:
 
 - **Back up all playlists** — on Android, the system *Save to* screen opens:

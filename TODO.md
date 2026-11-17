@@ -1,4 +1,4 @@
-# SCBeatWiz — TODO and ideas
+# Beth — TODO and ideas
 
 Planning notes to come back to. Started 2026-11-16.
 

@@ -1,4 +1,4 @@
-# SCBeatWiz (SC Beat Wizard)
+# Beth
 
 Flutter app for live musicians: a setlist-driven visual metronome that listens
 through the mic and detects the band's tempo in real time. Primary target is
@@ -7,11 +7,15 @@ maintained.
 
 ## Naming
 
-- **SCBeatWiz** — short name: Android launcher label, iOS `CFBundleName`, web
-  `short_name`, macOS bundle, Dart package (`scbeatwiz`), root widget
-  (`SCBeatWizApp`), repo.
-- **SC Beat Wizard** — full name: app/window titles, iOS display name, web
-  title and descriptions.
+- **Beth** — the app's only name: Android launcher label, iOS
+  `CFBundleName` and display name, web `name`/`short_name`/title, macOS
+  bundle (`Beth.app`), app/window titles, Dart package (`beth`), root widget
+  (`BethApp`), method channel (`beth/files`), backup tag (`beth-playlists`).
+- The app used to be called **SCBeatWiz** / **SC Beat Wizard**. Don't use
+  those names in anything new. They remain only where kept on purpose: the
+  GitHub repo (`greenlava82/SCBeatWiz`), and import of old shared setlists
+  (`# SCBeatWiz setlist:`) and backups (`scbeatwiz-playlists`), which must
+  keep working.
 - Never "BPM Metronome" or `bpm_metronome` in anything user-facing.
 - The app IDs are deliberately still `com.example.bpm_metronome` (Android) and
   `com.example.bpmMetronome` (iOS/macOS); changing them makes a new app that
@@ -28,10 +32,11 @@ maintained.
 - `lib/playlist_text.dart` — plain-text setlist export (`playlistToText`),
   lenient import (`parsePlaylistText`, also accepts the app's JSON) and the
   all-playlists backup (`playlistsToBackup`: JSON tagged
-  `"kind": "scbeatwiz-playlists"`, `"version": 1`; imports set `isBackup` and
-  keep empty playlists). Pure Dart.
+  `"kind": "beth-playlists"`, `"version": 1`; the old `scbeatwiz-playlists`
+  tag is still accepted; imports set `isBackup` and keep empty playlists).
+  Pure Dart.
 - Backup/restore UI is in `main.dart` (`_showBackupSheet()`). Saving on
-  Android goes through the `scbeatwiz/files` method channel in
+  Android goes through the `beth/files` method channel in
   `MainActivity.kt` (`ACTION_CREATE_DOCUMENT`, i.e. "Save to…" Downloads /
   Drive); elsewhere through `share_plus` ("Save to Files" on iOS). Restore
   uses `file_selector`. Don't switch to `file_picker` or `share_plus` 13:
@@ -156,7 +161,7 @@ Notes:
 - Band sync needs two real Bluetooth devices: the iOS simulator and Android
   emulator have no Bluetooth. The macOS app works as the second device
   (`flutter build macos --debug`, then `open
-  build/macos/Build/Products/Debug/SCBeatWiz.app`); it has the same
+  build/macos/Build/Products/Debug/Beth.app`); it has the same
   advertising limits as an iPhone. Python BLE tools run from Claude's shell
   are killed by macOS (no Bluetooth permission), and macOS permission
   prompts and the Pixel's *Nearby devices* prompt are for the user to answer.
