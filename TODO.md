@@ -70,6 +70,75 @@ Build a setlist by playing through songs at rehearsal.
 - Needs native companion apps (Wear OS: Kotlin/Compose or Flutter on Wear;
   Apple Watch: Swift/SwiftUI via WatchConnectivity). Larger effort.
 
+### 5. Standalone CYD (detector, leader, setlists on the ESP32)
+
+Turn the CYD follower (`firmware/cyd-follower`) into a device that can also
+listen and lead without a phone. Planned 2026-11-17; an INMP441 I2S mic is
+on order (stage 1 steps 1–3 don't need it).
+
+**Decisions**
+
+- One firmware with a **Follow / Lead** choice on the start screen; rename
+  the folder to `firmware/cyd` once it leads.
+- Setlists come from the app over Bluetooth; editing stays on the phone.
+- INMP441 on the free pins: SCK → GPIO22, WS → GPIO27 (CN1), SD → GPIO35
+  (P3), plus 3.3 V, GND, L/R → GND. That uses every free pin, so a
+  footswitch needs the SD slot's pins (5, 18, 19, 23) later.
+
+**Stage 1 — detection on the CYD** (standalone heard-BPM display)
+
+- [ ] Run the Dart synthetic suite at 16 kHz (the app only uses 44.1 kHz);
+      if it regresses, port at 44.1 kHz instead.
+- [ ] Port `tempo_detector.dart` to C++ (`lib/tempo/`, no Arduino deps), in
+      `float` (the ESP32 FPU is single precision; doubles are emulated),
+      esp-dsp FFT on the board, plain FFT on the host.
+- [ ] Shared test audio: a Dart test writes the synthesized clips as PCM plus
+      the Dart-detected tempo; `pio test -e native` checks the C++ port
+      matches. Clips regenerated, not committed; the C++ test skips if missing.
+- [ ] I2S mic driver, heard BPM + confidence screen, serial log of CPU time
+      per frame (expect ~10% of a core).
+- [ ] Live test: phone playing tracks, then a real kit at volume.
+
+**Stage 2 — setlists from the app**
+
+- [ ] Transfer protocol in pure Dart (`lib/device_transfer_protocol.dart`)
+      plus C++ port with shared vectors: the backup JSON in numbered chunks
+      (a characteristic holds ≤ 512 bytes) with a CRC at the end.
+- [ ] CYD: "setlist inbox" service, LittleFS partition (one USB reflash),
+      playlist chooser, song screen with target + heard BPM; tap right/left
+      half = next/previous song, 2 s hold still sleeps.
+- [ ] App: **Send to device** in the backup sheet (scan, pick a CYD, send);
+      own commit, separate from the protocol. Test on Pixel and macOS.
+
+**Stage 3 — CYD as leader**
+
+- [ ] Port the encoder (`encodeBandSyncPayload`, `BandSyncDetails.toBytes`)
+      to C++, checked against the same vectors in reverse.
+- [ ] Re-enable NimBLE broadcaster/peripheral roles; advertise on change +
+      1 s heartbeat; serve the details characteristic; no scanning in Lead.
+- [ ] Test with the Pixel and the macOS app as followers at once; measure
+      load with detector + BLE + display running together.
+
+**Stage 4 — metronome, drift, graph, capture**
+
+- [ ] Port `tempo_drift.dart` and `tempo_lock.dart` with tests (drift
+      colours, rushing/dragging badge).
+- [ ] Count-in: screen flash, optional click on the speaker amp (GPIO26),
+      auto-pause on lock.
+- [ ] Tempo graph (heard + target over N minutes, ~2 redraws/s).
+- [ ] Capture to flash; **Fetch from device** in the app shows the changes
+      before applying them.
+
+**Stage 5 — optional**
+
+- [ ] Footswitch via the SD slot pins.
+- [ ] Battery life on a power bank.
+- [ ] Backlight dimming from the LDR (GPIO34).
+
+**Risks to check early:** float vs double drift (stage 1 vectors), CPU/RAM
+with everything running (stage 3), mic at stage volume (INMP441 ≈ 120 dB SPL
+max; placement likely matters more).
+
 ## Backlog (other ideas)
 
 - [ ] **Stage mode:** huge high-contrast readout (BPM, drift arrow, next
