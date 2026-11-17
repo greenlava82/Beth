@@ -9,6 +9,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:scbeatwiz/band_sync_icon.dart';
 import 'package:scbeatwiz/band_sync_protocol.dart';
 import 'package:scbeatwiz/tempo_drift.dart';
 
@@ -102,13 +103,7 @@ List<_Vector> _vectors() {
 /// draw and JSON escapes.
 const _details = BandSyncDetails(
   playlistName: 'Friday Gig – Ça va',
-  songs: [
-    'Valerie',
-    'Don’t Stop "Me" Now',
-    r'Back\slash',
-    'Ünïcødé 🎸',
-    '',
-  ],
+  songs: ['Valerie', 'Don’t Stop "Me" Now', r'Back\slash', 'Ünïcødé 🎸', ''],
 );
 
 /// [bytes] as a C string literal; octal escapes can't run into the next
@@ -138,6 +133,14 @@ int _drift(DriftLevel? d) => switch (d) {
   DriftLevel.drifting => 2,
   DriftLevel.off => 3,
 };
+
+/// Session ids covering every icon once (spread over the 16-bit range),
+/// plus the edges of the range.
+List<int> _iconSessionIds() => [
+  for (var i = 0; i < bandSyncIconCount; i++) i + 96 * ((i * 271) % 682),
+  0,
+  0xFFFF,
+];
 
 String renderHeader() {
   final b = StringBuffer()
@@ -204,6 +207,31 @@ String renderHeader() {
     ..writeln(
       'static const char kBandSyncDetailsJson[] =\n'
       '    ${_cString(_details.toBytes())};',
+    )
+    ..writeln()
+    ..writeln('// Session icons (BandSyncIcon): every icon once, plus edges.')
+    ..writeln('struct SessionIconVector {')
+    ..writeln('  uint16_t sessionId;')
+    ..writeln('  uint8_t shape, colour;')
+    ..writeln('  const char* name;')
+    ..writeln('  uint32_t rgb;')
+    ..writeln('};')
+    ..writeln()
+    ..writeln('static const int kSessionIconCount = $bandSyncIconCount;')
+    ..writeln('static const SessionIconVector kSessionIconVectors[] = {');
+  for (final id in _iconSessionIds()) {
+    final icon = BandSyncIcon.forSession(id);
+    b.writeln(
+      '    {${_hex(id)}, ${icon.shape}, ${icon.colour}, "${icon.name}", '
+      '0x${icon.rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}},',
+    );
+  }
+  b
+    ..writeln('};')
+    ..writeln()
+    ..writeln(
+      'static const int kSessionIconVectorCount =\n'
+      '    sizeof(kSessionIconVectors) / sizeof(kSessionIconVectors[0]);',
     );
   return b.toString();
 }

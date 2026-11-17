@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'band_sync.dart';
+import 'band_sync_icon.dart';
+import 'band_sync_icon_view.dart';
 import 'band_sync_protocol.dart';
 import 'tempo_drift.dart';
 
@@ -49,11 +51,24 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
     final following = _follower.followedSession;
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          following == null
-              ? 'Follow a leader'
-              : 'Following ${sessionCode(following)}',
-        ),
+        title: following == null
+            ? const Text('Follow a leader')
+            : Row(
+                children: [
+                  BandSyncIconBadge(
+                    BandSyncIcon.forSession(following),
+                    size: 32,
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      'Following the '
+                      '${BandSyncIcon.forSession(following).name}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
         actions: [
           if (following != null)
             IconButton(
@@ -102,15 +117,20 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Text(
-            'Nearby leaders — check the code matches the '
+            'Nearby leaders — check the icon matches the '
             'leader’s screen',
           ),
         ),
         for (final l in leaders)
           ListTile(
-            leading: const Icon(Icons.podcasts),
-            title: Text('Leader ${l.state.code}'),
-            subtitle: Text(_summary(l.state)),
+            leading: BandSyncIconBadge(
+              BandSyncIcon.forSession(l.state.sessionId),
+              size: 40,
+            ),
+            title: Text(
+              _capitalized(BandSyncIcon.forSession(l.state.sessionId).name),
+            ),
+            subtitle: Text('${l.state.code} · ${_summary(l.state)}'),
             trailing: Text(
               '${l.rssi} dBm',
               style: const TextStyle(color: Colors.grey),
@@ -120,6 +140,9 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
       ],
     );
   }
+
+  static String _capitalized(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   static String _summary(BandSyncState s) {
     final target = s.freeRunning

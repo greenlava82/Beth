@@ -150,11 +150,19 @@ One phone, the **leader**, listens and shares what it hears; the others
 **follow** and show the same song, target, tempo and drift colour.
 
 - **Leader:** tap the band icon (📡) in the top bar → **Lead the band**. The
-  icon becomes a 4-character code (e.g. `2AA8`); the menu shows how many
-  followers have joined. Use the leader's setlist, nudges and MIDI as usual.
+  icon becomes the band's **session icon** (e.g. a green anchor); the menu
+  shows its name, a 4-character code (e.g. `2AA8`) and how many followers
+  have joined. Use the leader's setlist, nudges and MIDI as usual.
+- **Session icon:** one of 96 (16 shapes × 6 colours), easy to call out
+  across a stage ("follow the orange anchor"). Choose it under band icon →
+  **Band icon…**; it's picked at random the first time and then kept from gig
+  to gig (the code still changes each session). Changing it while leading
+  restarts the session, so followers re-join. It's a check against joining
+  the wrong band by mistake, not security: anyone nearby can see it.
 - **Followers:** band icon → **Follow a leader…**. With one leader nearby it
-  joins automatically; otherwise pick the code that matches the leader's
-  screen. Followers don't use their own mic or metronome.
+  joins automatically; otherwise pick the icon that matches the leader's
+  screen (the list shows the code too, in case two nearby leaders share an
+  icon). Followers don't use their own mic or metronome.
 - While the leader's count-in metronome is running, followers see
   *Count-in metronome on*; it goes away when the leader's metronome stops
   (after the band locks on). It's a status line only — followers don't get a
@@ -281,6 +289,8 @@ lib/
   tempo_lock.dart       Decides when the band has locked onto the target tempo
   tempo_drift.dart      Classifies drift from the target (on tempo / drifting / off)
   band_sync_protocol.dart  Band sync wire format, details and staleness (pure Dart)
+  band_sync_icon.dart   Session icons from the session id (pure Dart)
+  band_sync_icon_view.dart  Session icon badge and picker
   band_sync.dart        Bluetooth LE leader broadcast and follower scan
   band_sync_screen.dart Follower screen
 test/
@@ -290,6 +300,7 @@ test/
   tempo_lock_test.dart       TempoLock unit tests
   tempo_drift_test.dart      Drift levels and hysteresis tests
   band_sync_protocol_test.dart  Band sync payload, details and staleness tests
+  band_sync_icon_test.dart      Session icon mapping tests
   band_sync_vectors_test.dart   Generates the firmware's band sync test vectors
   widget_test.dart           App smoke test
 firmware/

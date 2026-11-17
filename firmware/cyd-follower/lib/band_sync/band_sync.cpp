@@ -1,5 +1,7 @@
 #include "band_sync.h"
 
+#include <stdio.h>
+
 namespace bandsync {
 
 namespace {
@@ -72,6 +74,44 @@ void sessionCode(uint16_t sessionId, char out[5]) {
     out[i] = kHex[(sessionId >> (12 - 4 * i)) & 0xF];
   }
   out[4] = '\0';
+}
+
+namespace {
+const char* const kShapeNames[kIconShapes] = {
+    "star",     "anchor", "heart",   "bolt",    // 0-3
+    "moon",     "sun",    "cloud",   "key",     // 4-7
+    "flame",    "leaf",   "paw",     "rocket",  // 8-11
+    "umbrella", "bell",   "diamond", "drop",    // 12-15
+};
+const char* const kColourNames[kIconColours] = {"blue",   "green", "yellow",
+                                                "orange", "pink",  "red"};
+const uint32_t kColourRgb[kIconColours] = {0x40C4FF, 0x00E676, 0xFFEA00,
+                                           0xFF9100, 0xE040FB, 0xFF5252};
+}  // namespace
+
+Icon sessionIcon(uint16_t sessionId) {
+  const int index = sessionId % kIconCount;
+  Icon icon;
+  icon.shape = index % kIconShapes;
+  icon.colour = index / kIconShapes;
+  return icon;
+}
+
+const char* iconShapeName(uint8_t shape) {
+  return shape < kIconShapes ? kShapeNames[shape] : "?";
+}
+
+const char* iconColourName(uint8_t colour) {
+  return colour < kIconColours ? kColourNames[colour] : "?";
+}
+
+uint32_t iconColourRgb(uint8_t colour) {
+  return colour < kIconColours ? kColourRgb[colour] : 0xFFFFFF;
+}
+
+void iconName(Icon icon, char* out, size_t n) {
+  snprintf(out, n, "%s %s", iconColourName(icon.colour),
+           iconShapeName(icon.shape));
 }
 
 bool Freshness::heard(const State& s, uint32_t nowMs) {

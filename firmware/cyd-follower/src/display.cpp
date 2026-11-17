@@ -5,6 +5,8 @@
 #include <driver/gpio.h>
 
 #include "branding_images.h"
+#include "session_icons.h"
+#include <ctype.h>
 #include <string.h>
 
 using bandsync::Drift;
@@ -83,6 +85,35 @@ void drawRle(TFT_eSPI& c, const uint16_t* runs, int length, int size, int x,
     if (px >= size) {
       px = 0;
       py++;
+    }
+  }
+}
+
+constexpr uint16_t rgb888(uint32_t c) {
+  return rgb(c >> 16, (c >> 8) & 0xFF, c & 0xFF);
+}
+
+// The leader's session icon, as in the app: its shape in its colour on a
+// dark disc of diameter d centred at cx, cy. The mask comes from
+// session_icons.h (4-bit alpha), blended onto the disc.
+void drawSessionIcon(TFT_eSPI& c, uint16_t sessionId, int cx, int cy, int d,
+                     bool large) {
+  const bandsync::Icon icon = bandsync::sessionIcon(sessionId);
+  const uint16_t fg = rgb888(bandsync::iconColourRgb(icon.colour));
+  c.fillCircle(cx, cy, d / 2, kBg);
+  const int size = large ? kSessionIconLargeSize : kSessionIconSmallSize;
+  const uint8_t* mask = large ? kSessionIconLarge[icon.shape]
+                              : kSessionIconSmall[icon.shape];
+  const int rowBytes = (size + 1) / 2;
+  const int x0 = cx - size / 2;
+  const int y0 = cy - size / 2;
+  for (int y = 0; y < size; y++) {
+    for (int x = 0; x < size; x++) {
+      const uint8_t b = mask[y * rowBytes + x / 2];
+      const uint8_t a = x % 2 == 0 ? b >> 4 : b & 0x0F;
+      if (a == 0) continue;
+      c.drawPixel(x0 + x, y0 + y,
+                  a == 15 ? fg : c.alphaBlend(a * 17, fg, kBg));
     }
   }
 }
@@ -166,20 +197,23 @@ void drawHeader(TFT_eSPI& c, const View& v, int oy) {
   c.drawString(right, kW - 8, 12 + oy, 2);
   const int rightW = right[0] ? c.textWidth(right, 2) + 12 : 0;
 
-  // Left: the leader's code, other leaders, and the playlist.
-  char code[5];
-  bandsync::sessionCode(s.sessionId, code);
+  // Left: the leader's icon, other leaders, and the playlist. (The code is
+  // only in the picker, to tell apart two leaders sharing an icon.)
+  drawSessionIcon(c, s.sessionId, 19, 12 + oy, 22, false);
   char left[96];
-  int n = snprintf(left, sizeof left, "%s", code);
+  int n = 0;
+  left[0] = '\0';
   if (v.otherLeaders > 0) {
-    n += snprintf(left + n, sizeof left - n, " (+%d)", v.otherLeaders);
+    n = snprintf(left, sizeof left, "(+%d)", v.otherLeaders);
   }
-  if (v.playlist[0]) snprintf(left + n, sizeof left - n, " - %s", v.playlist);
+  if (v.playlist[0]) {
+    snprintf(left + n, sizeof left - n, "%s%s", n ? " " : "", v.playlist);
+  }
   char fitted[96];
-  fitText(c, left, 2, kW - 16 - rightW, fitted, sizeof fitted);
+  fitText(c, left, 2, kW - 44 - rightW, fitted, sizeof fitted);
   c.setTextColor(kGrey);
   c.setTextDatum(ML_DATUM);
-  c.drawString(fitted, 8, 12 + oy, 2);
+  c.drawString(fitted, 36, 12 + oy, 2);
 }
 
 void drawMirror(TFT_eSPI& c, const View& v, int oy) {
@@ -351,10 +385,13 @@ void drawPicker(TFT_eSPI& c, const PickerView& p, int oy) {
   }
   c.setTextDatum(ML_DATUM);
   c.setTextColor(kGrey, kBg);
-  c.drawString("Tap the code shown on the leader's phone", 8, 46 + oy, 2);
+  c.drawString("Tap the icon shown on the leader's phone", 8, 46 + oy, 2);
 
-  char line1[48];
-  char line2[32];
+  constexpr int kTextX = 58;
+  constexpr int kTextRight = kW - 46;  // clear of the signal bars
+  char line[64];
+  char heard[24];
+  char fitted[64];
   for (int i = 0; i < p.count; i++) {
     const PickerEntry& e = p.rows[i];
     const int top = kRowsTop + i * kRowH + oy;
@@ -362,39 +399,53 @@ void drawPicker(TFT_eSPI& c, const PickerView& p, int oy) {
     c.fillRoundRect(6, top + 2, kW - 12, kRowH - 4, 6, bg);
     const int mid = top + kRowH / 2;
 
-    char code[5];
-    bandsync::sessionCode(e.sessionId, code);
+    drawSessionIcon(c, e.sessionId, 30, mid, 38, true);
+
+    // Line 1: "Orange anchor 0551", and FOLLOWING on the right.
+    int followW = 0;
+    if (e.followed) {
+      c.setTextDatum(MR_DATUM);
+      c.setTextColor(kTeal, bg);
+      c.drawString("FOLLOWING", kTextRight, mid - 8, 1);
+      followW = c.textWidth("FOLLOWING", 1) + 8;
+    }
+    bandsync::iconName(bandsync::sessionIcon(e.sessionId), line, sizeof line);
+    line[0] = toupper(line[0]);
+    fitText(c, line, 2, kTextRight - kTextX - followW - 40, fitted,
+            sizeof fitted);
     c.setTextDatum(ML_DATUM);
     c.setTextColor(e.live ? TFT_WHITE : kGrey, bg);
-    c.drawString(code, 16, mid, 4);
+    c.drawString(fitted, kTextX, mid - 8, 2);
+    char code[5];
+    bandsync::sessionCode(e.sessionId, code);
+    c.setTextColor(kGrey, bg);
+    c.drawString(code, kTextX + c.textWidth(fitted, 2) + 6, mid - 8, 2);
 
+    // Line 2: song and target, then the heard tempo in its drift colour.
     if (e.freeRunning) {
-      strlcpy(line1, "Free running", sizeof line1);
+      strlcpy(line, "Free running", sizeof line);
     } else {
       int n = e.songIndex >= 0
-                  ? snprintf(line1, sizeof line1, "Song %d", e.songIndex + 1)
-                  : snprintf(line1, sizeof line1, "No song");
+                  ? snprintf(line, sizeof line, "Song %d", e.songIndex + 1)
+                  : snprintf(line, sizeof line, "No song");
       if (e.target10) {
-        snprintf(line1 + n, sizeof line1 - n, " - target %u",
+        snprintf(line + n, sizeof line - n, " - target %u",
                  (e.target10 + 5) / 10);
       }
     }
     if (e.heard10) {
-      snprintf(line2, sizeof line2, "heard %u.%u", e.heard10 / 10,
+      snprintf(heard, sizeof heard, "heard %u.%u", e.heard10 / 10,
                e.heard10 % 10);
     } else {
-      strlcpy(line2, "listening...", sizeof line2);
+      strlcpy(heard, "listening...", sizeof heard);
     }
+    const int heardW = c.textWidth(heard, 2);
+    fitText(c, line, 2, kTextRight - kTextX - heardW - 8, fitted,
+            sizeof fitted);
     c.setTextColor(kGrey, bg);
-    c.drawString(line1, 92, mid - 8, 2);
+    c.drawString(fitted, kTextX, mid + 9, 2);
     c.setTextColor(e.live && e.heard10 ? driftColor(e.drift) : kGrey, bg);
-    c.drawString(line2, 92, mid + 9, 2);
-
-    if (e.followed) {
-      c.setTextDatum(MR_DATUM);
-      c.setTextColor(kTeal, bg);
-      c.drawString("FOLLOWING", kW - 46, mid, 1);
-    }
+    c.drawString(heard, kTextX + c.textWidth(fitted, 2) + 8, mid + 9, 2);
     drawBars(c, kW - 36, mid + 8, e.bars, e.live ? kGreen : kGrey);
   }
 }

@@ -78,6 +78,24 @@ static void test_session_code() {
   TEST_ASSERT_EQUAL_STRING("0001", code);
 }
 
+static void test_session_icons_match_the_app() {
+  TEST_ASSERT_EQUAL(kSessionIconCount, bandsync::kIconCount);
+  for (int i = 0; i < kSessionIconVectorCount; i++) {
+    const SessionIconVector& v = kSessionIconVectors[i];
+    const bandsync::Icon icon = bandsync::sessionIcon(v.sessionId);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(v.shape, icon.shape, v.name);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(v.colour, icon.colour, v.name);
+    char name[32];
+    bandsync::iconName(icon, name, sizeof name);
+    TEST_ASSERT_EQUAL_STRING(v.name, name);
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(v.rgb, bandsync::iconColourRgb(icon.colour),
+                                    v.name);
+  }
+  // Out of range falls back rather than reading past the tables.
+  TEST_ASSERT_EQUAL_STRING("?", bandsync::iconShapeName(16));
+  TEST_ASSERT_EQUAL_STRING("?", bandsync::iconColourName(6));
+}
+
 static void test_freshness() {
   State s;
   s.sequence = 200;
@@ -108,6 +126,7 @@ int main() {
   RUN_TEST(test_string_order_is_rejected_over_the_air);
   RUN_TEST(test_finds_payload_in_advertisement);
   RUN_TEST(test_session_code);
+  RUN_TEST(test_session_icons_match_the_app);
   RUN_TEST(test_freshness);
   return UNITY_END();
 }
