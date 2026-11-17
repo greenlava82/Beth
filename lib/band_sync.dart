@@ -16,6 +16,7 @@ import 'dart:math' as math;
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:flutter/foundation.dart';
 
+import 'band_sync_icon.dart';
 import 'band_sync_protocol.dart';
 
 /// What the leader is broadcasting right now; [BandSyncState.sessionId] and
@@ -92,13 +93,16 @@ class BandSyncLeader extends ChangeNotifier {
 
   int _sessionId = 0;
   String get code => sessionCode(_sessionId);
+  BandSyncIcon get icon => BandSyncIcon.forSession(_sessionId);
 
   /// Distinct followers that have read the details since starting (a
   /// connectionless follower is otherwise invisible to the leader).
   int get joinedCount => _joined.length;
 
-  /// Start broadcasting. Returns an error message, or null on success.
-  Future<String?> start() async {
+  /// Start broadcasting, with a fresh session id that shows [icon] (the
+  /// band's chosen icon) or a random one. Returns an error message, or null
+  /// on success.
+  Future<String?> start({BandSyncIcon? icon}) async {
     if (_active) return null;
     final manager = _manager ??= PeripheralManager();
     final problem = await _ready(manager);
@@ -107,7 +111,9 @@ class BandSyncLeader extends ChangeNotifier {
       notifyListeners();
       return problem;
     }
-    _sessionId = math.Random().nextInt(0x10000);
+    _sessionId = icon != null && icon.isValid
+        ? sessionIdForIcon(icon)
+        : math.Random().nextInt(0x10000);
     _joined.clear();
     _sent = null;
     _error = null;

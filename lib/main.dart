@@ -16,6 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'band_sync.dart';
+import 'band_sync_icon.dart';
+import 'band_sync_icon_view.dart';
 import 'band_sync_protocol.dart';
 import 'band_sync_screen.dart';
 import 'playlist.dart';
@@ -111,6 +113,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   // Band sync: this phone can broadcast its song and tempo to bandmates.
   late final BandSyncLeader _bandLeader = BandSyncLeader(_bandSyncSnapshot);
+  // The band's icon, kept from gig to gig (chosen at random on first lead).
+  BandSyncIcon? _bandIcon;
 
   // MIDI
   final MidiCommand _midiCommand = MidiCommand();
@@ -148,6 +152,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
     final savedMin = prefs.getDouble('preferredMinBpm');
     final savedMax = prefs.getDouble('preferredMaxBpm');
+
+    final savedIcon = prefs.getInt('bandIcon');
+    if (savedIcon != null && BandSyncIcon(savedIcon).isValid) {
+      _bandIcon = BandSyncIcon(savedIcon);
+    }
 
     final savedHistory = prefs.getInt('historyMinutes');
     if (savedHistory != null && _historyMinuteOptions.contains(savedHistory)) {
@@ -724,10 +733,35 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _showSnack('Stopped leading the band');
       return;
     }
-    final error = await _bandLeader.start();
+    if (_bandIcon == null) {
+      _saveBandIcon(
+          BandSyncIcon(math.Random().nextInt(bandSyncIconCount)));
+    }
+    final error = await _bandLeader.start(icon: _bandIcon);
     _showSnack(error ??
-        'Leading the band as ${_bandLeader.code} — bandmates choose '
-            '“Follow a leader”');
+        'Leading the band as the ${_bandLeader.icon.name} — bandmates '
+            'choose “Follow a leader”');
+  }
+
+  void _saveBandIcon(BandSyncIcon icon) {
+    _bandIcon = icon;
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setInt('bandIcon', icon.index));
+  }
+
+  Future<void> _chooseBandIcon() async {
+    final current = _bandIcon ??
+        (_bandLeader.isActive ? _bandLeader.icon : const BandSyncIcon(0));
+    final icon = await showBandSyncIconPicker(context, current);
+    if (icon == null || !mounted) return;
+    setState(() => _saveBandIcon(icon));
+    // A new icon needs a new session id: followers re-join.
+    if (_bandLeader.isActive && _bandLeader.icon != icon) {
+      await _bandLeader.stop();
+      final error = await _bandLeader.start(icon: icon);
+      _showSnack(error ??
+          'Now leading as the ${icon.name} — bandmates need to re-join');
+    }
   }
 
   /// Followers mirror the leader instead of listening themselves, so the
@@ -753,9 +787,19 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           value: _toggleLeading,
           checked: leading,
           child: Text(leading
-              ? 'Leading as ${_bandLeader.code}'
+              ? 'Leading as ${_bandLeader.icon.name} (${_bandLeader.code})'
                   '${_bandLeader.joinedCount > 0 ? ' · ${_bandLeader.joinedCount} joined' : ''}'
               : 'Lead the band'),
+        ),
+        PopupMenuItem(
+          value: _chooseBandIcon,
+          child: ListTile(
+            leading: _bandIcon == null
+                ? const Icon(Icons.palette_outlined)
+                : BandSyncIconBadge(_bandIcon!),
+            title: const Text('Band icon…'),
+            contentPadding: EdgeInsets.zero,
+          ),
         ),
         PopupMenuItem(
           value: _openFollower,
@@ -766,21 +810,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           ),
         ),
       ],
-      // While leading, show the code so bandmates can check they joined
-      // the right phone.
+      // While leading, show the session icon so bandmates can check they
+      // joined the right phone (the code is in the menu, for when two
+      // nearby leaders happen to share an icon).
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: leading
-            ? Chip(
-                avatar: Icon(Icons.podcasts,
-                    size: 18,
-                    color: _bandLeader.error == null
-                        ? Colors.amberAccent
-                        : Colors.redAccent),
-                label: Text(_bandLeader.code),
-                visualDensity: VisualDensity.compact,
-              )
-            : const Icon(Icons.podcasts),
+        child: !leading
+            ? const Icon(Icons.podcasts)
+            : _bandLeader.error == null
+                ? BandSyncIconBadge(_bandLeader.icon, size: 36)
+                : const Icon(Icons.podcasts, color: Colors.redAccent),
       ),
     );
   }
