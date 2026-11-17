@@ -377,8 +377,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   }
 
   void _toggleMetronome() {
-    // Manual control wins: don't auto-pause a metronome the user started.
-    _tempoLock.disarm();
+    // Starting the metronome is a count-in, just like changing song: watch
+    // for the band to lock onto the target and pause it then. Stopping it
+    // cancels the watch.
+    final target = _currentTargetBpm;
+    if (!_isMetronomePlaying && target != null) {
+      _tempoLock.arm(target);
+    } else {
+      _tempoLock.disarm();
+    }
     setState(() {
       _isMetronomePlaying = !_isMetronomePlaying;
       _updateMetronomeTempo();

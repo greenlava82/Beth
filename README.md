@@ -84,10 +84,11 @@ reopens on the same song.
 ### Count-in auto-pause
 
 When you move to a new song, the metronome starts so the band can count in.
-Once the detected tempo stays within about 3% of the song's BPM for 3 seconds,
-the metronome pauses and the app shows *"Locked on … BPM — metronome paused"*.
-From there, follow the detected tempo. If you start or stop the metronome
-yourself, it won't auto-pause until the next song.
+Starting it yourself (tap the circle) does the same, e.g. for the first song
+of the set. Once the detected tempo stays within about 3% of the song's BPM
+for 3 seconds, the metronome pauses and the app shows *"Locked on … BPM —
+metronome paused"*. From there, follow the detected tempo. Stopping the
+metronome yourself cancels the auto-pause.
 
 ### Setlists
 
