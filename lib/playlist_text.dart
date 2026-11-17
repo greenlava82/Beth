@@ -17,7 +17,7 @@ import 'playlist.dart';
 /// with `#` are comments, except a
 /// `# Setlist: <name>` / `# Playlist: <name>` header, which names the
 /// playlist. JSON (a playlist object or a list of them, as stored by the
-/// app) is accepted too.
+/// app) is accepted too, as is a full backup from [playlistsToBackup].
 
 const String _headerPrefix = '# SCBeatWiz setlist: ';
 
@@ -36,6 +36,30 @@ String playlistToText(Playlist playlist) {
   return b.toString();
 }
 
+/// Marks a file as a full SCBeatWiz playlist backup.
+const String backupKind = 'scbeatwiz-playlists';
+
+/// Current backup format version. Readers accept any version and ignore
+/// fields they don't know, so later versions can add fields freely.
+const int backupVersion = 1;
+
+/// Renders every playlist as a backup file (indented JSON, so it's readable
+/// and diff-friendly if someone opens it). Empty playlists are kept.
+String playlistsToBackup(List<Playlist> playlists, {DateTime? savedAt}) =>
+    const JsonEncoder.withIndent('  ').convert({
+      'kind': backupKind,
+      'version': backupVersion,
+      if (savedAt != null) 'saved': savedAt.toIso8601String(),
+      'playlists': [for (final p in playlists) p.toJson()],
+    });
+
+/// "SCBeatWiz playlists 2026-11-17.json" for a backup saved on [date].
+String backupFileName(DateTime date) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return 'SCBeatWiz playlists '
+      '${date.year}-${two(date.month)}-${two(date.day)}.json';
+}
+
 /// Result of [parsePlaylistText].
 class PlaylistImport {
   /// The imported playlists (usually one). Empty if nothing was readable.
@@ -44,7 +68,11 @@ class PlaylistImport {
   /// Non-empty, non-comment lines that couldn't be read as a song.
   final List<String> skippedLines;
 
-  const PlaylistImport(this.playlists, this.skippedLines);
+  /// True when the text was a full backup ([playlistsToBackup]).
+  final bool isBackup;
+
+  const PlaylistImport(this.playlists, this.skippedLines,
+      {this.isBackup = false});
 
   int get songCount =>
       playlists.fold(0, (n, p) => n + p.items.length);
@@ -56,6 +84,10 @@ PlaylistImport parsePlaylistText(String text,
     {String fallbackName = 'Imported Setlist'}) {
   final trimmed = text.trim();
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    final backup = _tryBackup(trimmed);
+    if (backup != null) {
+      return PlaylistImport(backup, const [], isBackup: true);
+    }
     final fromJson = _tryJson(trimmed);
     if (fromJson != null) return PlaylistImport(fromJson, const []);
   }
@@ -87,6 +119,24 @@ PlaylistImport parsePlaylistText(String text,
   return PlaylistImport(
       [Playlist(name?.isNotEmpty == true ? name! : fallbackName, songs)],
       skipped);
+}
+
+/// The playlists in a backup file, or null if [text] isn't one. Unlike a
+/// shared playlist, empty playlists are restored too.
+List<Playlist>? _tryBackup(String text) {
+  try {
+    final decoded = jsonDecode(text);
+    if (decoded is! Map || decoded['kind'] != backupKind) return null;
+    final list = decoded['playlists'];
+    if (list is! List) return null;
+    final playlists = [
+      for (final p in list)
+        if (p is Map<String, dynamic>) Playlist.fromJson(p),
+    ];
+    return playlists.isEmpty ? null : playlists;
+  } catch (_) {
+    return null;
+  }
 }
 
 List<Playlist>? _tryJson(String text) {

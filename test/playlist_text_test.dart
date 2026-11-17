@@ -109,6 +109,64 @@ Song B, 120
     });
   });
 
+  group('backup', () {
+    final playlists = [
+      Playlist('Friday Gig', [
+        SetlistItem('Superstition', 100, durationSeconds: 266),
+        SetlistItem('Valerie', 118),
+      ]),
+      Playlist('Ideas', []),
+      Playlist('Ça va', [SetlistItem('Waltz, op. 2', 150)]),
+    ];
+
+    test('round-trips every playlist, including empty ones', () {
+      final text = playlistsToBackup(playlists,
+          savedAt: DateTime.utc(2026, 11, 17, 20, 30));
+      final r = parsePlaylistText(text);
+      expect(r.isBackup, isTrue);
+      expect(r.skippedLines, isEmpty);
+      expect(r.playlists.map((p) => p.name), ['Friday Gig', 'Ideas', 'Ça va']);
+      expect(r.playlists[0].items.map((s) => s.bpm), [100, 118]);
+      expect(r.playlists[0].items[0].durationSeconds, 266);
+      expect(r.playlists[1].items, isEmpty);
+      // Commas in titles survive (unlike the one-line text format).
+      expect(r.playlists[2].items.single.name, 'Waltz, op. 2');
+      expect(r.songCount, 3);
+    });
+
+    test('is labelled and versioned', () {
+      final text = playlistsToBackup(playlists,
+          savedAt: DateTime.utc(2026, 11, 17, 20, 30));
+      expect(text, contains('"kind": "$backupKind"'));
+      expect(text, contains('"version": $backupVersion'));
+      expect(text, contains('"saved": "2026-11-17T20:30:00.000Z"'));
+    });
+
+    test('tolerates unknown fields and newer versions', () {
+      final r = parsePlaylistText('{"kind":"$backupKind","version":99,'
+          '"theme":"dark","playlists":[{"name":"A","items":'
+          '[{"name":"X","bpm":90,"key":"Am"}]}]}');
+      expect(r.isBackup, isTrue);
+      expect(r.playlists.single.items.single.bpm, 90);
+    });
+
+    test('a backup with no playlists imports nothing', () {
+      final r = parsePlaylistText('{"kind":"$backupKind","playlists":[]}');
+      expect(r.playlists, isEmpty);
+    });
+
+    test('shared playlists are not backups', () {
+      expect(parsePlaylistText('A, 100').isBackup, isFalse);
+      final json = encodePlaylists(defaultPlaylists());
+      expect(parsePlaylistText(json).isBackup, isFalse);
+    });
+
+    test('file name carries the date', () {
+      expect(backupFileName(DateTime(2026, 3, 7)),
+          'SCBeatWiz playlists 2026-03-07.json');
+    });
+  });
+
   group('JSON import', () {
     test('single playlist object', () {
       final r = parsePlaylistText(
