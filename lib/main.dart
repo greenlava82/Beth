@@ -782,7 +782,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     return PopupMenuButton<void Function()>(
       tooltip: 'Band sync',
       onSelected: (action) => action(),
+      // Most bandmates follow, so that comes first.
       itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _openFollower,
+          child: const ListTile(
+            leading: Icon(Icons.groups),
+            title: Text('Follow a leader…'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
         CheckedPopupMenuItem(
           value: _toggleLeading,
           checked: leading,
@@ -798,14 +807,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 ? const Icon(Icons.palette_outlined)
                 : BandSyncIconBadge(_bandIcon!),
             title: const Text('Band icon…'),
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
-        PopupMenuItem(
-          value: _openFollower,
-          child: const ListTile(
-            leading: Icon(Icons.groups),
-            title: Text('Follow a leader…'),
             contentPadding: EdgeInsets.zero,
           ),
         ),
