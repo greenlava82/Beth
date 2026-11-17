@@ -247,9 +247,22 @@ then `adb connect <ip>:<port>`.
 ### Build an APK
 
 ```bash
-flutter build apk --release
+tool/flutter_versioned.sh build apk --release
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
+
+### Versions and build numbers
+
+The version (`1.0.0`) is in `pubspec.yaml`; bump it by hand for a release.
+The build number is the git commit count and is set at build time, along
+with the short commit hash, by `tool/flutter_versioned.sh` (it wraps
+`flutter build …` and `flutter run …`). Use it for any build you hand out:
+Android needs the build number to go up to install over an older build, and
+**About Beth** in the drawer then shows e.g. `1.0.0 (build 130, 47bc7bb)`
+(`-dirty` if built with uncommitted changes, `dev` if built without the
+script). The version also goes into backups, and band sync followers see
+the leader's version (in amber if it differs from their own). The CYD
+firmware is stamped the same way when built (`firmware/cyd-follower/version.py`).
 
 Release builds are currently signed with the debug key — fine for sideloading,
 not for the Play Store.
@@ -283,6 +296,7 @@ dart run flutter_native_splash:create         # splash screens (flutter_native_s
 ```
 lib/
   main.dart             UI and app state: setlists, metronome, graph, mic, MIDI
+  app_version.dart      Version, build number and commit of this build (pure Dart)
   playlist.dart         Playlist and song model, JSON storage (pure Dart)
   playlist_text.dart    Plain-text setlist export, lenient import, backup file (pure Dart)
   tempo_detector.dart   Real-time tempo detection (pure Dart)
@@ -294,6 +308,7 @@ lib/
   band_sync.dart        Bluetooth LE leader broadcast and follower scan
   band_sync_screen.dart Follower screen
 test/
+  app_version_test.dart      Version label and parsing tests
   playlist_test.dart         Model, JSON and duration tests
   playlist_text_test.dart    Share/import format tests
   tempo_detector_test.dart   Synthetic-audio detection tests
@@ -303,6 +318,8 @@ test/
   band_sync_icon_test.dart      Session icon mapping tests
   band_sync_vectors_test.dart   Generates the firmware's band sync test vectors
   widget_test.dart           App smoke test
+tool/
+  flutter_versioned.sh       flutter build/run with the build number and commit
 firmware/
   cyd-follower/              ESP32 display follower for band sync (PlatformIO)
 ```

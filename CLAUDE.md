@@ -45,6 +45,13 @@ maintained.
   Spectral-flux onset detection (2048 FFT, 10 ms hop, log bands) → harmonic-comb
   autocorrelation over the last 8 s → octave choice via a preferred range +
   optional hint (the song's BPM) → smoothed estimate with confidence 0..1.
+- `lib/app_version.dart` — `AppVersion` (version from `pubspec.yaml`, build
+  number = git commit count, short commit hash), pure Dart. The build number
+  and commit are set at build time by `tool/flutter_versioned.sh`; plain
+  `flutter run` shows "dev". Shown in About Beth, written into backups
+  (`"app"`), and sent in band sync details (`"app": "1.0.0+130"`) so
+  followers see the leader's build. The CYD gets the same scheme from
+  `firmware/cyd-follower/version.py`. Tests: `test/app_version_test.dart`.
 - `lib/tempo_lock.dart` — `TempoLock`, decides when the detected tempo has
   locked onto the song's marking (±3%, conf ≥ 0.2, held 3 s) so the count-in
   metronome can auto-pause.
@@ -148,7 +155,7 @@ flutter run --release -d <device-id>     # use for judging detection timing
 Build and sideload without `flutter run`:
 
 ```bash
-flutter build apk --debug
+tool/flutter_versioned.sh build apk --debug   # sets build number + commit
 adb -s <device-id> install -r build/app/outputs/flutter-apk/app-debug.apk
 adb -s <device-id> shell am start -n com.example.bpm_metronome/.MainActivity
 adb -s <device-id> exec-out screencap -p > shot.png

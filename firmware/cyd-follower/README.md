@@ -73,6 +73,12 @@ pio run -t upload
 pio device monitor
 ```
 
+Each build is stamped with the app's version, the git commit count as its
+build number and the commit hash (`version.py`, same scheme as the app's
+`tool/flutter_versioned.sh`). The start screen shows `1.0.0 build 135` at
+the top right, and the serial log starts with
+`Beth CYD follower 1.0.0 (build 135, 985ed42)`.
+
 The serial monitor (115200 baud) logs every new state, e.g.
 `5F6E # 72 song=1 target=100.0 heard=104.0 conf=0.91 drift=2 … rssi=-57`.
 
