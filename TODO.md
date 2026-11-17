@@ -34,6 +34,15 @@ same advertising limits as an iPhone, so this covers the iOS-leader case.
 - [ ] Leader's app must stay on screen (phones stop broadcasting in the
       background) — worth a reminder on the leader's screen?
 - [ ] Option to hide song names (followers then show "Song 3").
+- [ ] Synced count-in flash on followers, matching the leader's screen
+      (visual only, ±30–50 ms). Advertisement arrival jitters ±50–150 ms, so
+      don't send per-beat updates: followers estimate the leader's clock with
+      a few NTP-style pings over GATT (keep the shortest round trip, redo
+      every minute or so), the payload carries "beat 1 at leader time T"
+      (2 bytes, ms mod 65.536 s; needs a protocol version bump), and each
+      device flashes locally. On the CYD flash a small region, not the whole
+      screen. Measure the ping round trip on Pixel + Mac first. On hold until
+      it's clear it's worth it.
 
 ### 2. Build-setlist mode (rehearsal)
 
