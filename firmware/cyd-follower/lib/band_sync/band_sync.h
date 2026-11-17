@@ -1,4 +1,4 @@
-// Band sync follower: decodes what an SCBeatWiz leader broadcasts.
+// Band sync follower: decodes what a Beth leader broadcasts.
 //
 // A C++ port of the decoding half of lib/band_sync_protocol.dart (keep the
 // two in step; test/band_sync_vectors.h is generated from the Dart encoder).
