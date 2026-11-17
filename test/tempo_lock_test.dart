@@ -1,5 +1,5 @@
-import 'package:scbeatwiz/tempo_detector.dart';
-import 'package:scbeatwiz/tempo_lock.dart';
+import 'package:beth/tempo_detector.dart';
+import 'package:beth/tempo_lock.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

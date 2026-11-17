@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scbeatwiz/band_sync_protocol.dart';
-import 'package:scbeatwiz/tempo_drift.dart';
+import 'package:beth/band_sync_protocol.dart';
+import 'package:beth/tempo_drift.dart';
 
 void main() {
   const full = BandSyncState(

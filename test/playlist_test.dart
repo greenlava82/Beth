@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scbeatwiz/playlist.dart';
+import 'package:beth/playlist.dart';
 
 void main() {
   test('round-trips through JSON', () {

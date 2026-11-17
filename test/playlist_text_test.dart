@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scbeatwiz/playlist.dart';
-import 'package:scbeatwiz/playlist_text.dart';
+import 'package:beth/playlist.dart';
+import 'package:beth/playlist_text.dart';
 
 void main() {
   SetlistItem one(String line) {
@@ -18,7 +18,7 @@ void main() {
       ]));
       expect(
           text,
-          '# SCBeatWiz setlist: Friday Gig\n'
+          '# Beth setlist: Friday Gig\n'
           'Superstition, 100, 4:26\n'
           'Valerie, 118\n'
           'Waltz  op. 2, 150\n');
@@ -91,6 +91,11 @@ Song B, 120
       expect(r.skippedLines, isEmpty);
     });
 
+    test('reads setlists shared under the old SCBeatWiz name', () {
+      final r = parsePlaylistText('# SCBeatWiz setlist: Old Gig\nSong A, 100');
+      expect(r.playlists.single.name, 'Old Gig');
+    });
+
     test('unreadable lines are skipped and reported', () {
       final r = parsePlaylistText('Song A, 100\nIntermission\nSong B, 500\n');
       expect(r.songCount, 1);
@@ -150,6 +155,13 @@ Song B, 120
       expect(r.playlists.single.items.single.bpm, 90);
     });
 
+    test('accepts backups saved under the old SCBeatWiz name', () {
+      final r = parsePlaylistText('{"kind":"scbeatwiz-playlists","version":1,'
+          '"playlists":[{"name":"Old","items":[]}]}');
+      expect(r.isBackup, isTrue);
+      expect(r.playlists.single.name, 'Old');
+    });
+
     test('a backup with no playlists imports nothing', () {
       final r = parsePlaylistText('{"kind":"$backupKind","playlists":[]}');
       expect(r.playlists, isEmpty);
@@ -163,7 +175,7 @@ Song B, 120
 
     test('file name carries the date', () {
       expect(backupFileName(DateTime(2026, 3, 7)),
-          'SCBeatWiz playlists 2026-03-07.json');
+          'Beth playlists 2026-03-07.json');
     });
   });
 

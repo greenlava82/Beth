@@ -1,6 +1,6 @@
 # CYD band sync follower
 
-A small hardware follower for SCBeatWiz band sync: an ESP32 "Cheap Yellow
+A small hardware follower for Beth band sync: an ESP32 "Cheap Yellow
 Display" (ESP32-2432S028R) that shows what the leader phone hears. Put it on
 the drum riser or a mic stand, power it from USB, and it shows the leader's
 tempo with no phone, pairing or app.
@@ -109,7 +109,7 @@ The screen is drawn a third at a time into a 16-bit buffer. A whole-screen
 - `src/display.*` — the screen layouts (follower and leader list) and the
   RGB LED.
 - `src/branding_images.h` — **generated** by the app's
-  `tool/render_branding_test.dart`: the SCBeatWiz mark shown on the
+  `tool/render_branding_test.dart`: the Beth mark shown on the
   searching screen and, faintly, behind the follower screen.
 - `src/session_icons.h` — **generated** by the app's
   `tool/render_session_icons_test.dart`: the 16 session icon shapes as

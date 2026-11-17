@@ -27,16 +27,16 @@ import 'tempo_drift.dart';
 import 'tempo_lock.dart';
 
 void main() {
-  runApp(const SCBeatWizApp());
+  runApp(const BethApp());
 }
 
-class SCBeatWizApp extends StatelessWidget {
-  const SCBeatWizApp({super.key});
+class BethApp extends StatelessWidget {
+  const BethApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SC Beat Wizard',
+      title: 'Beth',
       theme: ThemeData(
         brightness: Brightness.dark,
         primarySwatch: Colors.teal,
@@ -920,7 +920,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   Future<void> _sharePlaylist(Playlist playlist) async {
     await SharePlus.instance.share(ShareParams(
       text: playlistToText(playlist),
-      subject: '${playlist.name} (SCBeatWiz setlist)',
+      subject: '${playlist.name} (Beth setlist)',
     ));
   }
 
@@ -953,7 +953,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Paste a setlist shared from SCBeatWiz, or one song per '
+                    'Paste a setlist shared from Beth, or one song per '
                     'line like "Superstition, 100".',
                     style: TextStyle(color: Colors.grey[400], fontSize: 13),
                   ),
@@ -1069,7 +1069,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
-  static const MethodChannel _filesChannel = MethodChannel('scbeatwiz/files');
+  static const MethodChannel _filesChannel = MethodChannel('beth/files');
 
   /// Saves a backup file. Android: the system "Save to…" picker (Downloads,
   /// Drive, …; see MainActivity). Elsewhere: the share sheet, whose "Save to
@@ -1106,7 +1106,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   Future<void> _restoreFromFile() async {
     const types = XTypeGroup(
-      label: 'SCBeatWiz backups and setlists',
+      label: 'Beth backups and setlists',
       extensions: ['json', 'txt'],
       mimeTypes: ['application/json', 'text/plain', 'application/octet-stream'],
       uniformTypeIdentifiers: ['public.json', 'public.plain-text'],
@@ -1703,7 +1703,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
     return Scaffold(
       appBar: AppBar(
-        // The SCBeatWiz mark opens the playlists drawer (in place of the
+        // The Beth mark opens the playlists drawer (in place of the
         // usual hamburger icon); the title is the current playlist.
         leading: Builder(
           builder: (context) => IconButton(

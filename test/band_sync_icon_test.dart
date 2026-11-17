@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scbeatwiz/band_sync_icon.dart';
+import 'package:beth/band_sync_icon.dart';
 
 void main() {
   test('96 icons, each with a distinct name', () {

@@ -1,5 +1,5 @@
-name: scbeatwiz
-description: "SC Beat Wizard: a setlist metronome that listens and shows your band's live tempo."
+name: beth
+description: "Beth: a setlist metronome that listens and shows your band's live tempo."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -70,7 +70,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    # Transparent SCBeatWiz mark, used as the playlists button in the app bar.
+    # Transparent Beth mark, used as the playlists button in the app bar.
     - assets/branding/splash.png
 
   # To add assets to your application, add an assets section, like this:

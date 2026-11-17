@@ -1,4 +1,4 @@
-// SCBeatWiz band sync follower for the ESP32 "Cheap Yellow Display".
+// Beth band sync follower for the ESP32 "Cheap Yellow Display".
 //
 // Listens (passively) for a leader phone's band sync advertisement and
 // mirrors its target and heard tempo on the screen. Like the app's follower,
@@ -308,7 +308,7 @@ constexpr uint32_t kReleaseMs = 80;  // resistive panels drop out briefly
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\nSCBeatWiz CYD follower%s\n",
+  Serial.printf("\nBeth CYD follower%s\n",
                 esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0
                     ? " (woken by a tap)"
                     : "");

@@ -1,11 +1,11 @@
 {
-    "name": "SC Beat Wizard",
-    "short_name": "SCBeatWiz",
+    "name": "Beth",
+    "short_name": "Beth",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#1E1846",
     "theme_color": "#1E1846",
-    "description": "SC Beat Wizard: a setlist metronome that listens and shows your band's live tempo.",
+    "description": "Beth: a setlist metronome that listens and shows your band's live tempo.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

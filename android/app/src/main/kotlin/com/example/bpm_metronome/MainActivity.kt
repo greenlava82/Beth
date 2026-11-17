@@ -13,7 +13,7 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         // "Save to…": the system document picker (Downloads, Drive, …), which
         // the share sheet doesn't offer for saving to the phone itself.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "scbeatwiz/files")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "beth/files")
             .setMethodCallHandler { call, result ->
                 if (call.method != "saveFile") {
                     result.notImplemented()
