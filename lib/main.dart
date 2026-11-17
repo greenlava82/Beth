@@ -9,12 +9,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_midi_command/flutter_midi_command.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'app_version.dart';
 import 'band_sync.dart';
 import 'band_sync_icon.dart';
 import 'band_sync_icon_view.dart';
@@ -116,6 +118,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // The band's icon, kept from gig to gig (chosen at random on first lead).
   BandSyncIcon? _bandIcon;
 
+  // This build's version (null until the platform answers).
+  AppVersion? _appVersion;
+
   // MIDI
   final MidiCommand _midiCommand = MidiCommand();
   StreamSubscription<MidiPacket>? _midiSub;
@@ -126,6 +131,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     WidgetsBinding.instance.addObserver(this);
     _bandLeader.addListener(_onBandLeaderChanged);
     _loadPlaylists();
+    _loadAppVersion();
     _setupMetronome();
     _setupMidi();
     _requestMicPermissionAndStart();
@@ -189,6 +195,30 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _isLoadingPlaylists = false;
       _updateMetronomeTempo();
     });
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _appVersion = AppVersion.fromPlatform(info.version, info.buildNumber);
+      });
+    } catch (e) {
+      debugPrint('No app version: $e');
+    }
+  }
+
+  void _showAbout() {
+    showAboutDialog(
+      context: context,
+      applicationName: 'Beth',
+      applicationVersion: _appVersion?.label,
+      applicationIcon: Image.asset('assets/branding/splash.png', width: 48),
+      children: const [
+        Text('Setlist metronome that listens to the band.'),
+      ],
+    );
   }
 
   Future<void> _savePlaylists() async {
@@ -1304,6 +1334,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               onTap: () {
                 Navigator.pop(context); // close drawer
                 _showBackupSheet();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('About Beth'),
+              subtitle: _appVersion == null ? null : Text(_appVersion!.label),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _showAbout();
               },
             ),
             const SizedBox(height: 8),
