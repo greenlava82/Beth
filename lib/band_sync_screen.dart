@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'app_version.dart';
 import 'band_sync.dart';
 import 'band_sync_icon.dart';
 import 'band_sync_icon_view.dart';
@@ -10,7 +11,10 @@ import 'tempo_drift.dart';
 /// Follower view: pick a nearby leader, then mirror its song, target and
 /// detected tempo. Followers don't listen to the mic themselves.
 class BandSyncFollowerScreen extends StatefulWidget {
-  const BandSyncFollowerScreen({super.key});
+  const BandSyncFollowerScreen({super.key, this.appVersion});
+
+  /// This device's version, to point out when the leader runs another build.
+  final AppVersion? appVersion;
 
   @override
   State<BandSyncFollowerScreen> createState() => _BandSyncFollowerScreenState();
@@ -163,6 +167,30 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
     null => null,
   };
 
+  /// "Leader on 1.0.0 (build 130)", in amber with this device's build when
+  /// they differ; null when the leader didn't say (older leaders).
+  Widget? _leaderVersion(BandSyncDetails? details) {
+    final leader = AppVersion.tryParse(details?.appVersion);
+    if (leader == null) return null;
+    String describe(AppVersion v) =>
+        v.build == null ? v.version : '${v.version} (build ${v.build})';
+    final mine = widget.appVersion;
+    final differs = mine != null && !mine.sameBuildAs(leader);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        differs
+            ? 'Leader on ${describe(leader)} · you\'re on ${describe(mine)}'
+            : 'Leader on ${describe(leader)}',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: differs ? Colors.amber : Colors.grey,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
   Widget _buildMirror(BuildContext context) {
     final s = _follower.state;
     final details = _follower.details;
@@ -223,6 +251,7 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
               style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
+        ?_leaderVersion(details),
         const SizedBox(height: 16),
         if (!s.freeRunning)
           Text(

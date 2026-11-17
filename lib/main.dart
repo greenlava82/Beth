@@ -738,7 +738,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final playlist = _playlists[_currentPlaylistIndex];
     final details = BandSyncDetails(
         playlistName: playlist.name,
-        songs: [for (final song in playlist.items) song.name]);
+        songs: [for (final song in playlist.items) song.name],
+        appVersion: _appVersion?.short);
     final hasSong = !_freeRunning && playlist.items.isNotEmpty;
     return (
       details: details,
@@ -803,7 +804,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (_isMetronomePlaying) _toggleMetronome();
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => const BandSyncFollowerScreen()));
+        builder: (_) => BandSyncFollowerScreen(appVersion: _appVersion)));
     if (wasRecording && mounted) _startRecording();
   }
 
