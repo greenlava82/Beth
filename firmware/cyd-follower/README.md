@@ -44,6 +44,22 @@ leading again, which picks a new code), and asks when there are several.
 
 The touch panel is resistive: press firmly with a fingernail or stylus.
 
+## Sleep
+
+- **Hold the screen** for 2 s to sleep: after 0.7 s it says *Keep holding
+  to sleep* (let go to cancel).
+- With **no leader nearby for a minute** (a lost leader counts as gone,
+  so about 72 s after the leader stops), it sleeps by itself.
+- **Tap the screen** to wake. It starts afresh, finds the leader and reads
+  the names again within a few seconds.
+
+Asleep, the ESP32 is in deep sleep with the radio off, the display panel
+asleep and the backlight and LED off. It can't hear leaders while asleep,
+so a tap is the only way to wake it. The board's USB-serial chip and
+regulator still draw a few milliamps (unmeasured). Some USB power banks
+switch off at such a low load; then the CYD loses power and needs the
+bank's button instead of a tap.
+
 ## Build and flash
 
 Needs [PlatformIO](https://platformio.org/) (`brew install platformio`).
@@ -92,7 +108,7 @@ The screen is drawn a third at a time into a 16-bit buffer. A whole-screen
   screen pixels.
 - `src/main.cpp` — passive NimBLE scan (no duplicate filtering, so every
   repeat is seen), choosing a leader and handling taps, reading the names,
-  redrawing only when something shown changes.
+  sleep, redrawing only when something shown changes.
 - `test/band_sync_vectors.h` — **generated** from the app's encoder by
   `test/band_sync_vectors_test.dart` in the app; `flutter test` fails if it's
   out of date. Regenerate with
