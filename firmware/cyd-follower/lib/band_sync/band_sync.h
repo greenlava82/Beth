@@ -51,6 +51,24 @@ bool findInAdvertisement(const uint8_t* data, size_t length, State& out);
 // The session id as four upper-case hex digits plus a terminator.
 void sessionCode(uint16_t sessionId, char out[5]);
 
+// The leader's session icon (BandSyncIcon in lib/band_sync_icon.dart): one
+// of 16 shapes x 6 colours, session id % 96, shape in the low part.
+constexpr int kIconShapes = 16;
+constexpr int kIconColours = 6;
+constexpr int kIconCount = kIconShapes * kIconColours;
+
+struct Icon {
+  uint8_t shape = 0;   // 0..15, see iconShapeName
+  uint8_t colour = 0;  // 0..5, see iconColourName
+};
+
+Icon sessionIcon(uint16_t sessionId);
+const char* iconShapeName(uint8_t shape);    // "anchor"
+const char* iconColourName(uint8_t colour);  // "orange"
+uint32_t iconColourRgb(uint8_t colour);      // 0xRRGGBB
+// "orange anchor", cut to fit n bytes.
+void iconName(Icon icon, char* out, size_t n);
+
 enum class Link : uint8_t { Live, Stale, Lost };
 
 // When the follower last heard *new* data. The radio repeats the last
