@@ -171,6 +171,10 @@ beat, so Bluetooth delay doesn't matter. Keep the leader's app on screen —
 phones stop broadcasting in the background. Range is a typical stage (about
 10 m); Bluetooth must be on and allowed for the app.
 
+A follower doesn't have to be a phone: [`firmware/cyd-follower`](firmware/cyd-follower)
+turns a cheap ESP32 board with a 2.8″ screen (the "Cheap Yellow Display") into
+a USB-powered tempo display for the drum riser.
+
 ### Tips
 
 - Put the phone where it can hear the whole band, not right next to one loud
@@ -286,7 +290,10 @@ test/
   tempo_lock_test.dart       TempoLock unit tests
   tempo_drift_test.dart      Drift levels and hysteresis tests
   band_sync_protocol_test.dart  Band sync payload, details and staleness tests
+  band_sync_vectors_test.dart   Generates the firmware's band sync test vectors
   widget_test.dart           App smoke test
+firmware/
+  cyd-follower/              ESP32 display follower for band sync (PlatformIO)
 ```
 
 ### How the tempo detection works
