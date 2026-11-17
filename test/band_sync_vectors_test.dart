@@ -104,6 +104,7 @@ List<_Vector> _vectors() {
 const _details = BandSyncDetails(
   playlistName: 'Friday Gig – Ça va',
   songs: ['Valerie', 'Don’t Stop "Me" Now', r'Back\slash', 'Ünïcødé 🎸', ''],
+  appVersion: '1.0.0+130',
 );
 
 /// [bytes] as a C string literal; octal escapes can't run into the next

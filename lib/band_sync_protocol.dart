@@ -245,12 +245,21 @@ BandSyncState? findBandSyncState(Iterable<String> serviceUuids) {
 /// What a follower reads once on joining: names for the numbers in
 /// [BandSyncState].
 class BandSyncDetails {
-  const BandSyncDetails({required this.playlistName, required this.songs});
+  const BandSyncDetails({
+    required this.playlistName,
+    required this.songs,
+    this.appVersion,
+  });
 
   final String playlistName;
 
   /// Song titles in setlist order ([BandSyncState.songIndex] indexes this).
   final List<String> songs;
+
+  /// The leader's app version and build, "1.0.0+130" (AppVersion.short), so
+  /// followers can see which build the leader runs; null if not sent
+  /// (leaders from before it was added).
+  final String? appVersion;
 
   String? songAt(int? index) =>
       (index == null || index < 0 || index >= songs.length)
@@ -263,6 +272,7 @@ class BandSyncDetails {
         'v': bandSyncProtocolVersion,
         'playlist': playlistName,
         'songs': songs,
+        'app': ?appVersion,
       }),
     ),
   );
@@ -277,6 +287,7 @@ class BandSyncDetails {
       return BandSyncDetails(
         playlistName: json['playlist'] is String ? json['playlist'] : '',
         songs: songs is List ? [for (final s in songs) '$s'] : const [],
+        appVersion: json['app'] is String ? json['app'] : null,
       );
     } on FormatException {
       return null;

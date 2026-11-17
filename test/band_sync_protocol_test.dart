@@ -139,8 +139,26 @@ void main() {
       final partial = BandSyncDetails.fromBytes('{"playlist":"X"}'.codeUnits)!;
       expect(partial.playlistName, 'X');
       expect(partial.songs, isEmpty);
+      expect(partial.appVersion, isNull);
       expect(BandSyncDetails.fromBytes('nope'.codeUnits), isNull);
       expect(BandSyncDetails.fromBytes('[1,2]'.codeUnits), isNull);
+    });
+
+    test('carries the leader\'s app version when given', () {
+      expect(String.fromCharCodes(details.toBytes()), isNot(contains('app')));
+      const withApp = BandSyncDetails(
+        playlistName: 'Friday Gig',
+        songs: ['Valerie'],
+        appVersion: '1.0.0+130',
+      );
+      expect(BandSyncDetails.fromBytes(withApp.toBytes())!.appVersion,
+          '1.0.0+130');
+      // A non-string value is ignored rather than failing the read.
+      expect(
+        BandSyncDetails.fromBytes('{"songs":["A"],"app":7}'.codeUnits)!
+            .appVersion,
+        isNull,
+      );
     });
 
     test('version changes with the content and is stable', () {
