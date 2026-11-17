@@ -23,5 +23,34 @@ struct View {
   bool operator!=(const View& o) const { return !(*this == o); }
 };
 
+// The leader picker: shown when several leaders are nearby.
+struct PickerEntry {
+  uint16_t sessionId = 0;
+  bool followed = false;
+  bool live = false;
+  bool freeRunning = false;
+  int16_t songIndex = -1;
+  uint16_t target10 = 0;
+  uint16_t heard10 = 0;
+  bandsync::Drift drift = bandsync::Drift::None;
+  uint8_t bars = 0;  // signal strength, 0-3
+};
+
+struct PickerView {
+  static constexpr int kMaxRows = 4;
+  int count = 0;
+  PickerEntry rows[kMaxRows];
+  bool canGoBack = false;  // already following someone
+
+  bool operator==(const PickerView& o) const;
+  bool operator!=(const PickerView& o) const { return !(*this == o); }
+};
+
+// What a tap on the picker hit.
+constexpr int kPickerBack = -2;
+constexpr int kPickerNothing = -1;
+int pickerHit(const PickerView& p, int x, int y);  // row index, or above
+
 void displayBegin();
 void displayDraw(const View& v);
+void displayDrawPicker(const PickerView& p);

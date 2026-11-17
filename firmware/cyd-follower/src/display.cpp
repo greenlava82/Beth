@@ -249,7 +249,10 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
   c.fillRect(barX, 216 + oy, barW, 5, kDim);
   c.fillRect(barX, 216 + oy, barW * s.confidence / 255, 5, barColor);
   c.setTextColor(kGrey, kBg);
-  c.drawString("confidence", kW / 2, 232 + oy, 1);
+  c.drawString(v.otherLeaders > 0
+                   ? "confidence  -  tap the screen to switch leader"
+                   : "confidence",
+               kW / 2, 232 + oy, 1);
 }
 
 void drawAll(TFT_eSPI& c, const View& v, int oy) {
@@ -280,7 +283,119 @@ void updateLed(const View& v) {
   }
 }
 
+// Picker layout.
+constexpr int kTitleH = 36;
+constexpr int kRowsTop = 58;
+constexpr int kRowH = 45;
+constexpr int kBackX = 236;  // the Back button spans to the right edge
+constexpr uint16_t kRow = rgb(0x24, 0x22, 0x2E);
+constexpr uint16_t kRowFollowed = rgb(0x2E, 0x3A, 0x40);
+
+void drawBars(TFT_eSPI& c, int x, int y, uint8_t bars, uint16_t color) {
+  for (int i = 0; i < 3; i++) {
+    const int h = 6 + i * 5;
+    c.fillRect(x + i * 7, y - h, 5, h, i < bars ? color : kDim);
+  }
+}
+
+void drawPicker(TFT_eSPI& c, const PickerView& p, int oy) {
+  c.setTextDatum(ML_DATUM);
+  c.setTextColor(TFT_WHITE, kBg);
+  c.drawString("Choose a leader", 8, kTitleH / 2 + oy, 4);
+  if (p.canGoBack) {
+    c.fillRoundRect(kBackX + 8, 4 + oy, kW - kBackX - 14, kTitleH - 8, 6,
+                    kRow);
+    c.setTextDatum(MC_DATUM);
+    c.setTextColor(TFT_WHITE, kRow);
+    c.drawString("Back", (kBackX + kW) / 2, kTitleH / 2 + oy, 2);
+  }
+  c.setTextDatum(ML_DATUM);
+  c.setTextColor(kGrey, kBg);
+  c.drawString("Tap the code shown on the leader's phone", 8, 46 + oy, 2);
+
+  char line1[48];
+  char line2[32];
+  for (int i = 0; i < p.count; i++) {
+    const PickerEntry& e = p.rows[i];
+    const int top = kRowsTop + i * kRowH + oy;
+    const uint16_t bg = e.followed ? kRowFollowed : kRow;
+    c.fillRoundRect(6, top + 2, kW - 12, kRowH - 4, 6, bg);
+    const int mid = top + kRowH / 2;
+
+    char code[5];
+    bandsync::sessionCode(e.sessionId, code);
+    c.setTextDatum(ML_DATUM);
+    c.setTextColor(e.live ? TFT_WHITE : kGrey, bg);
+    c.drawString(code, 16, mid, 4);
+
+    if (e.freeRunning) {
+      strlcpy(line1, "Free running", sizeof line1);
+    } else {
+      int n = e.songIndex >= 0
+                  ? snprintf(line1, sizeof line1, "Song %d", e.songIndex + 1)
+                  : snprintf(line1, sizeof line1, "No song");
+      if (e.target10) {
+        snprintf(line1 + n, sizeof line1 - n, " - target %u",
+                 (e.target10 + 5) / 10);
+      }
+    }
+    if (e.heard10) {
+      snprintf(line2, sizeof line2, "heard %u.%u", e.heard10 / 10,
+               e.heard10 % 10);
+    } else {
+      strlcpy(line2, "listening...", sizeof line2);
+    }
+    c.setTextColor(kGrey, bg);
+    c.drawString(line1, 92, mid - 8, 2);
+    c.setTextColor(e.live && e.heard10 ? driftColor(e.drift) : kGrey, bg);
+    c.drawString(line2, 92, mid + 9, 2);
+
+    if (e.followed) {
+      c.setTextDatum(MR_DATUM);
+      c.setTextColor(kTeal, bg);
+      c.drawString("FOLLOWING", kW - 46, mid, 1);
+    }
+    drawBars(c, kW - 36, mid + 8, e.bars, e.live ? kGreen : kGrey);
+  }
+}
+
 }  // namespace
+
+bool PickerView::operator==(const PickerView& o) const {
+  if (count != o.count || canGoBack != o.canGoBack) return false;
+  for (int i = 0; i < count; i++) {
+    const PickerEntry& a = rows[i];
+    const PickerEntry& b = o.rows[i];
+    if (a.sessionId != b.sessionId || a.followed != b.followed ||
+        a.live != b.live || a.freeRunning != b.freeRunning ||
+        a.songIndex != b.songIndex || a.target10 != b.target10 ||
+        a.heard10 != b.heard10 || a.drift != b.drift || a.bars != b.bars) {
+      return false;
+    }
+  }
+  return true;
+}
+
+int pickerHit(const PickerView& p, int x, int y) {
+  if (p.canGoBack && y < kTitleH + 8 && x >= kBackX) return kPickerBack;
+  if (y < kRowsTop) return kPickerNothing;
+  const int row = (y - kRowsTop) / kRowH;
+  return row < p.count ? row : kPickerNothing;
+}
+
+void displayDrawPicker(const PickerView& p) {
+  if (haveStrip) {
+    for (int top = 0; top < kH; top += kStripH) {
+      strip.fillSprite(kBg);
+      drawPicker(strip, p, -top);
+      strip.pushSprite(0, top);
+    }
+  } else {
+    tft.fillScreen(kBg);
+    drawPicker(tft, p, 0);
+  }
+  setLed(0, 0, 0);
+}
 
 bool View::operator==(const View& o) const {
   // Everything drawn; the sequence isn't, so heartbeats don't redraw.

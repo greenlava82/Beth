@@ -13,6 +13,7 @@
 
 #include "display.h"
 #include "leaders.h"
+#include "touch.h"
 
 namespace {
 
@@ -152,33 +153,88 @@ bool readDetails(const bandsync::State& leader, bandsync::Details& out) {
   return ok;
 }
 
-// Picks who to follow: keep the current leader unless it's been lost and
-// another one is live; otherwise the strongest live leader.
+// The leader picker, open when several leaders are nearby and we have to
+// ask (like the phone follower's list), or when the user taps to switch.
+bool pickerOpen = false;
+uint32_t pickerTouchedMs = 0;  // closes by itself 20 s after this
+constexpr uint32_t kPickerTimeoutMs = 20000;
+// Give every nearby leader a chance to be heard before choosing.
+constexpr uint32_t kSettleMs = 2000;
+uint32_t scanStartedMs = 0;
+
+void follow(uint16_t sessionId, const char* why) {
+  followed = sessionId;
+  following = true;
+  nextNamesTryMs = 0;
+  namesFailures = 0;
+  char code[5];
+  bandsync::sessionCode(followed, code);
+  Serial.printf("following leader %s (%s)\n", code, why);
+}
+
+bool isLive(const LeaderInfo& l, uint32_t now) {
+  return l.used && l.freshness.linkAt(now) == bandsync::Link::Live;
+}
+
+// Like the phone follower: join by itself only when there's no doubt.
+// Keep the current leader until it's lost; then switch if exactly one
+// other is live, or ask if there are several.
 void chooseLeader(const LeaderInfo all[Leaders::kMax], uint32_t now) {
-  const LeaderInfo* current = nullptr;
-  const LeaderInfo* best = nullptr;
+  bool currentOk = false;
+  const LeaderInfo* onlyOther = nullptr;
+  int others = 0;
   for (int i = 0; i < Leaders::kMax; i++) {
     const LeaderInfo& l = all[i];
     if (!l.used) continue;
-    if (following && l.state.sessionId == followed) current = &l;
-    if (l.freshness.linkAt(now) == bandsync::Link::Live &&
-        (best == nullptr || l.rssi > best->rssi)) {
-      best = &l;
+    if (following && l.state.sessionId == followed) {
+      currentOk = l.freshness.linkAt(now) != bandsync::Link::Lost;
+    } else if (isLive(l, now)) {
+      others++;
+      onlyOther = &l;
     }
   }
-  const bool currentLost =
-      current == nullptr ||
-      current->freshness.linkAt(now) == bandsync::Link::Lost;
-  if (best != nullptr && (!following || currentLost) &&
-      (!following || best->state.sessionId != followed)) {
-    followed = best->state.sessionId;
-    following = true;
-    nextNamesTryMs = 0;
-    namesFailures = 0;
-    char code[5];
-    bandsync::sessionCode(followed, code);
-    Serial.printf("following leader %s (rssi %d)\n", code, best->rssi);
+  if (currentOk || now - scanStartedMs < kSettleMs) return;
+  if (others == 1) {
+    follow(onlyOther->state.sessionId,
+           following ? "previous leader lost" : "only leader nearby");
+    pickerOpen = false;
+  } else if (others > 1 && !pickerOpen) {
+    Serial.printf("%d leaders nearby: asking\n", others);
+    pickerOpen = true;
+    pickerTouchedMs = now;
   }
+}
+
+uint8_t signalBars(int rssi) {
+  return rssi > -65 ? 3 : rssi > -78 ? 2 : rssi > -90 ? 1 : 0;
+}
+
+// Leaders that aren't lost, in a stable order (by code) so rows don't jump.
+PickerView buildPicker(const LeaderInfo all[Leaders::kMax], uint32_t now,
+                       bool currentOk) {
+  PickerView p;
+  p.canGoBack = currentOk;
+  for (int i = 0; i < Leaders::kMax; i++) {
+    const LeaderInfo& l = all[i];
+    if (!l.used || l.freshness.linkAt(now) == bandsync::Link::Lost) continue;
+    PickerEntry e;
+    e.sessionId = l.state.sessionId;
+    e.followed = following && l.state.sessionId == followed;
+    e.live = l.freshness.linkAt(now) == bandsync::Link::Live;
+    e.freeRunning = l.state.freeRunning;
+    e.songIndex = l.state.songIndex;
+    e.target10 = l.state.target10;
+    e.heard10 = l.state.heard10;
+    e.drift = l.state.drift;
+    e.bars = signalBars(l.rssi);
+    int at = p.count++;
+    while (at > 0 && p.rows[at - 1].sessionId > e.sessionId) {
+      p.rows[at] = p.rows[at - 1];
+      at--;
+    }
+    p.rows[at] = e;
+  }
+  return p;
 }
 
 bool namesCurrentFor(const bandsync::State& s) {
@@ -227,17 +283,23 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\nSCBeatWiz CYD follower");
   displayBegin();
+  touchBegin();
   displayDraw(View());
 
   NimBLEDevice::init("");
   startScan();
+  scanStartedMs = millis();
   Serial.println("scanning for leaders");
 }
 
 void loop() {
   static View shown;
+  static PickerView shownPicker;
   static bool drawnOnce = false;
+  static bool pickerShown = false;
   static int lastLoggedSeq = -1;
+  static bool wasTouched = false;
+  static uint32_t lastTapMs = 0;
 
   const uint32_t now = millis();
   LeaderInfo all[Leaders::kMax];
@@ -266,6 +328,60 @@ void loop() {
       v.otherLeaders++;
     }
   }
+  const bool currentOk = v.hasLeader && v.link != bandsync::Link::Lost;
+  const PickerView picker = buildPicker(all, now, currentOk);
+
+  // Taps act on the press, once (debounced).
+  TouchPoint touch;
+  const bool touched = touchRead(touch);
+#ifdef TOUCH_DEBUG
+  static uint32_t lastDebugMs = 0;
+  if (touched && now - lastDebugMs > 150) {
+    lastDebugMs = now;
+    Serial.printf("held %d,%d (raw %u,%u)\n", touch.x, touch.y, touch.rawX,
+                  touch.rawY);
+  }
+#endif
+  const bool tap = touched && !wasTouched && now - lastTapMs > 300;
+  wasTouched = touched;
+  if (tap) {
+    lastTapMs = now;
+    Serial.printf("tap %d,%d (raw %u,%u)\n", touch.x, touch.y, touch.rawX,
+                  touch.rawY);
+    if (pickerOpen) {
+      pickerTouchedMs = now;
+      const int hit = pickerHit(picker, touch.x, touch.y);
+      if (hit == kPickerBack) {
+        pickerOpen = false;
+      } else if (hit >= 0) {
+        if (!following || picker.rows[hit].sessionId != followed) {
+          follow(picker.rows[hit].sessionId, "chosen");
+        }
+        pickerOpen = false;
+      }
+    } else if (v.otherLeaders > 0) {
+      pickerOpen = true;
+      pickerTouchedMs = now;
+    }
+  }
+  // An unused picker closes if there's someone to go back to.
+  if (pickerOpen && currentOk && now - pickerTouchedMs > kPickerTimeoutMs) {
+    pickerOpen = false;
+  }
+  // Nothing left to choose between.
+  if (pickerOpen && picker.count == 0) pickerOpen = false;
+
+  if (pickerOpen) {
+    if (!pickerShown || picker != shownPicker) {
+      displayDrawPicker(picker);
+      shownPicker = picker;
+      pickerShown = true;
+      drawnOnce = false;
+    }
+    delay(20);
+    return;
+  }
+  pickerShown = false;
 
   // Names: read once per leader and details version, only while the
   // leader is live (it's in range), backing off after failures.
@@ -300,5 +416,5 @@ void loop() {
     shown = v;
     drawnOnce = true;
   }
-  delay(50);
+  delay(20);
 }
