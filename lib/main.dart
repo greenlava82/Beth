@@ -1108,7 +1108,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final now = DateTime.now();
     final name = backupFileName(now);
     final bytes =
-        utf8.encode(playlistsToBackup(_playlists, savedAt: now));
+        utf8.encode(playlistsToBackup(_playlists,
+            savedAt: now, appVersion: _appVersion?.label));
     final n = _playlists.length;
     final saved = 'Backed up $n playlist${n == 1 ? '' : 's'}';
     if (defaultTargetPlatform == TargetPlatform.android) {
