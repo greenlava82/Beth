@@ -210,8 +210,8 @@ untested scaffolding.
 ### Get the code
 
 ```bash
-git clone https://github.com/greenlava82/SCBeatWiz.git
-cd SCBeatWiz
+git clone https://github.com/greenlava82/Beth.git
+cd Beth
 flutter pub get
 flutter doctor   # check the Android toolchain section
 ```
