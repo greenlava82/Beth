@@ -12,10 +12,11 @@ maintained.
   bundle (`Beth.app`), app/window titles, Dart package (`beth`), root widget
   (`BethApp`), method channel (`beth/files`), backup tag (`beth-playlists`).
 - The app used to be called **SCBeatWiz** / **SC Beat Wizard**. Don't use
-  those names in anything new. They remain only where kept on purpose: the
-  GitHub repo (`greenlava82/SCBeatWiz`), and import of old shared setlists
-  (`# SCBeatWiz setlist:`) and backups (`scbeatwiz-playlists`), which must
-  keep working.
+  those names in anything new. They remain only where kept on purpose:
+  import of old shared setlists (`# SCBeatWiz setlist:`) and backups
+  (`scbeatwiz-playlists`), which must keep working. The GitHub repo was
+  renamed from `greenlava82/SCBeatWiz` to `greenlava82/Beth` (GitHub
+  redirects the old URL).
 - Never "BPM Metronome" or `bpm_metronome` in anything user-facing.
 - The app IDs are deliberately still `com.example.bpm_metronome` (Android) and
   `com.example.bpmMetronome` (iOS/macOS); changing them makes a new app that
@@ -242,9 +243,9 @@ Notes:
 
 ## Git / GitHub
 
-- Remote: `origin` = `git@github-greenlava82:greenlava82/SCBeatWiz.git`. The
+- Remote: `origin` = `git@github-greenlava82:greenlava82/Beth.git`. The
   `github-greenlava82` SSH alias selects the right key; the plain `github.com`
   host authenticates as a different (work) account and gets "permission
   denied". Don't change the remote URL or SSH config.
-- `gh` is logged in as greenlava82; use `--repo greenlava82/SCBeatWiz`.
+- `gh` is logged in as greenlava82; use `--repo greenlava82/Beth`.
 - No CI is configured — local `flutter analyze` + `flutter test` are the gate.
