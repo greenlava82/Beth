@@ -49,11 +49,17 @@ const int backupVersion = 1;
 
 /// Renders every playlist as a backup file (indented JSON, so it's readable
 /// and diff-friendly if someone opens it). Empty playlists are kept.
-String playlistsToBackup(List<Playlist> playlists, {DateTime? savedAt}) =>
-    const JsonEncoder.withIndent('  ').convert({
+/// [appVersion] records which build wrote it ("1.0.0 (build 130, 47bc7bb)");
+/// it's for people reading the file, and import ignores it.
+String playlistsToBackup(
+  List<Playlist> playlists, {
+  DateTime? savedAt,
+  String? appVersion,
+}) => const JsonEncoder.withIndent('  ').convert({
       'kind': backupKind,
       'version': backupVersion,
       if (savedAt != null) 'saved': savedAt.toIso8601String(),
+      'app': ?appVersion,
       'playlists': [for (final p in playlists) p.toJson()],
     });
 

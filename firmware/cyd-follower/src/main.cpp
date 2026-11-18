@@ -308,7 +308,8 @@ constexpr uint32_t kReleaseMs = 80;  // resistive panels drop out briefly
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\nBeth CYD follower%s\n",
+  Serial.printf("\nBeth CYD follower %s (build %d, %s)%s\n", BETH_VERSION,
+                BETH_BUILD, BETH_COMMIT,
                 esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0
                     ? " (woken by a tap)"
                     : "");

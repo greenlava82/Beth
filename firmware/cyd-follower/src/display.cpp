@@ -120,6 +120,12 @@ void drawSessionIcon(TFT_eSPI& c, uint16_t sessionId, int cx, int cy, int d,
 
 void drawSearching(TFT_eSPI& c, int oy) {
   drawRle(c, kLogo, kLogoLength, kLogoSize, (kW - kLogoSize) / 2, 14 + oy);
+  // Version and build (version.py), top right, clear of the logo.
+  char version[32];
+  snprintf(version, sizeof(version), "%s build %d", BETH_VERSION, BETH_BUILD);
+  c.setTextDatum(TR_DATUM);
+  c.setTextColor(kGrey, kBg);
+  c.drawString(version, kW - 4, 4 + oy, 1);
   c.setTextDatum(MC_DATUM);
   c.setTextColor(TFT_WHITE, kBg);
   c.drawString("Looking for a leader...", kW / 2, 130 + oy, 4);
