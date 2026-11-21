@@ -23,12 +23,18 @@ void main() {
   });
 
   testWidgets('Show creation: tap tempo, commit, undo', (tester) async {
+    // Tall enough for the drawer's fixed tiles.
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const BethApp());
     await tester.pump(const Duration(seconds: 1));
 
-    await tester.tap(find.byTooltip('Build a show'));
-    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.byTooltip('Playlists'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Build a show'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 5));
     expect(find.text('New show'), findsOneWidget);
     expect(find.text('Song 1'), findsOneWidget);
     // Nothing to commit until there's a BPM.
@@ -57,8 +63,10 @@ void main() {
     expect(tester.widget<ButtonStyleButton>(commit).onPressed, isNotNull);
 
     // Finishing with nothing committed drops the empty show.
-    await tester.tap(find.byTooltip('Done building show'));
-    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.byTooltip('Playlists'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done building show'));
+    await tester.pumpAndSettle();
     expect(find.text('Default Setlist'), findsOneWidget);
   });
 }

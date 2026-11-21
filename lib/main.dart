@@ -1646,6 +1646,18 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             ),
             const Divider(),
             ListTile(
+              leading: Icon(_mode == _ScreenMode.show
+                  ? Icons.check
+                  : Icons.playlist_add),
+              title: Text(_mode == _ScreenMode.show
+                  ? 'Done building show'
+                  : 'Build a show'),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _setShowMode(_mode != _ScreenMode.show);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.add),
               title: const Text('New Playlist'),
               onTap: () {
@@ -2114,11 +2126,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             overflow: TextOverflow.ellipsis),
         actions: [
           _buildBandMenu(),
-          IconButton(
-            tooltip: _mode == _ScreenMode.show ? 'Done building show' : 'Build a show',
-            icon: Icon(_mode == _ScreenMode.show ? Icons.check : Icons.playlist_add),
-            onPressed: () => _setShowMode(_mode != _ScreenMode.show),
-          ),
           IconButton(
             tooltip: _mode == _ScreenMode.freeRunning ? 'Back to setlist' : 'Free-running mode',
             icon: Icon(_mode == _ScreenMode.freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
