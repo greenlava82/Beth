@@ -100,7 +100,4 @@ class ShowDraft {
     _bpm = null;
     _scale = ShowScale.normal;
   }
-
-  /// Puts the label back after an undone commit.
-  void undoCommit(String label) => setPendingLabel(label);
 }
