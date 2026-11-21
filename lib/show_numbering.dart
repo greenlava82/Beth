@@ -48,6 +48,24 @@ String nextSuffix(String suffix) {
   return 'a${String.fromCharCodes(chars)}';
 }
 
+/// Previous letter suffix: 'b' → 'a', 'a' → '', 'aa' → 'z', 'ba' → 'az'.
+String prevSuffix(String suffix) {
+  if (suffix.isEmpty) return '';
+  // Bijective base 26 (a = 1 … z = 26, aa = 27), so it inverts nextSuffix.
+  var n = 0;
+  for (final c in suffix.codeUnits) {
+    n = n * 26 + (c - 0x60);
+  }
+  n--;
+  final out = <int>[];
+  while (n > 0) {
+    final r = (n - 1) % 26;
+    out.add(0x61 + r);
+    n = (n - 1) ~/ 26;
+  }
+  return String.fromCharCodes(out.reversed);
+}
+
 /// "3b" → "4", "3" → "4". Unparseable labels return null.
 String? nextWholeLabel(String label) {
   final l = ShowLabel.parse(label);

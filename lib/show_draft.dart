@@ -73,6 +73,29 @@ class ShowDraft {
     if (ShowLabel.parse(label) != null) _nextDefault = label.trim();
   }
 
+  ShowLabel get _stepBase =>
+      ShowLabel.parse(_pendingLabel) ??
+      ShowLabel.parse(_nextDefault) ??
+      const ShowLabel(1);
+
+  /// Bumps the song number up or down (minimum 1); the letter is dropped,
+  /// so "3b" + 1 is "4". Starts from the last numeric label if the pending
+  /// one is free text.
+  void stepNumber(int delta) {
+    final n = _stepBase.number + delta;
+    setPendingLabel('${n < 1 ? 1 : n}');
+  }
+
+  /// Steps the letter: "3" → "3a" → "3b"; down again to "3a" → "3".
+  void stepSuffix(int delta) {
+    final base = _stepBase;
+    var suffix = base.suffix;
+    for (var i = 0; i < delta.abs(); i++) {
+      suffix = delta > 0 ? nextSuffix(suffix) : prevSuffix(suffix);
+    }
+    setPendingLabel('${base.number}$suffix');
+  }
+
   /// Whether [label] matches one of [existing] (case-insensitive).
   static bool isDuplicate(String label, Iterable<String> existing) {
     final l = label.trim().toLowerCase();

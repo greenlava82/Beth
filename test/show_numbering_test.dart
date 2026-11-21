@@ -21,6 +21,17 @@ void main() {
     expect(nextSuffix('zz'), 'aaa');
   });
 
+  test('prevSuffix inverts nextSuffix', () {
+    expect(prevSuffix(''), '');
+    expect(prevSuffix('a'), '');
+    expect(prevSuffix('b'), 'a');
+    expect(prevSuffix('aa'), 'z');
+    expect(prevSuffix('ba'), 'az');
+    for (final s in ['', 'a', 'z', 'az', 'zz', 'abc']) {
+      expect(prevSuffix(nextSuffix(s)), s);
+    }
+  });
+
   test('next whole and sub', () {
     expect(nextWholeLabel('3b'), '4');
     expect(nextWholeLabel('3'), '4');

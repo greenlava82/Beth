@@ -127,4 +127,43 @@ void main() {
     expect(d.scale, ShowScale.normal);
     expect(d.pendingLabel, '5');
   });
+
+  test('number stepper drops the letter and stops at 1', () {
+    final d = ShowDraft(pendingLabel: '3b');
+    d.stepNumber(1);
+    expect(d.pendingLabel, '4');
+    d.stepNumber(-1);
+    d.stepNumber(-1);
+    expect(d.pendingLabel, '2');
+    d.stepNumber(-5);
+    expect(d.pendingLabel, '1');
+  });
+
+  test('letter stepper adds, advances and removes letters', () {
+    final d = ShowDraft(pendingLabel: '3');
+    d.stepSuffix(1);
+    expect(d.pendingLabel, '3a');
+    d.stepSuffix(1);
+    expect(d.pendingLabel, '3b');
+    d.stepSuffix(-1);
+    d.stepSuffix(-1);
+    expect(d.pendingLabel, '3');
+    d.stepSuffix(-1);
+    expect(d.pendingLabel, '3');
+  });
+
+  test('steppers on free text start from the last numeric label', () {
+    final d = ShowDraft(pendingLabel: '5');
+    d.setPendingLabel('intro');
+    d.stepNumber(1);
+    expect(d.pendingLabel, '6');
+  });
+
+  test('stepped label becomes the base for auto-advance', () {
+    final d = ShowDraft(pendingLabel: '1');
+    d.stepSuffix(1);
+    d.setBpm(100);
+    d.commit();
+    expect(d.pendingLabel, '2');
+  });
 }
