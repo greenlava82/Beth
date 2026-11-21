@@ -25,6 +25,7 @@ import 'band_sync_screen.dart';
 import 'playlist.dart';
 import 'playlist_text.dart';
 import 'tempo_detector.dart';
+import 'tempo_display_gate.dart';
 import 'tempo_drift.dart';
 import 'tempo_lock.dart';
 
@@ -87,7 +88,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   // Tempo detection
   static const int _sampleRate = 44100;
-  static const double _minDisplayConfidence = 0.1;
+  // When the readout shows a BPM instead of "Listening…" (user settings).
+  final TempoDisplayGate _displayGate = TempoDisplayGate();
   // Tighter octave prior: the current song's BPM tells us whether the band
   // is at 60 or 120, so lean on it for the half/double-time choice.
   final TempoDetector _tempoDetector =
@@ -141,6 +143,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       setState(() {
         _timeCounterMs += 1000;
         final seconds = _timeCounterMs / 1000.0;
+        // A held reading expires even when no new estimate arrives.
+        if (_currentCalculatedBpm > 0) {
+          _currentCalculatedBpm = _displayGate.tick(DateTime.now());
+        }
         if (_currentCalculatedBpm > 0) {
           _bpmHistory.add(FlSpot(seconds, _currentCalculatedBpm));
         } else {
@@ -163,6 +169,17 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (savedIcon != null && BandSyncIcon(savedIcon).isValid) {
       _bandIcon = BandSyncIcon(savedIcon);
     }
+
+    _displayGate
+      ..showAbove = (prefs.getDouble('showConfidence') ??
+              TempoDisplayGate.defaultShowAbove)
+          .clamp(_showAboveMin, _showAboveMax)
+      ..hysteresis = (prefs.getDouble('confidenceHysteresis') ??
+              TempoDisplayGate.defaultHysteresis)
+          .clamp(0.0, _hysteresisMax)
+      ..holdSeconds = (prefs.getDouble('holdSeconds') ??
+              TempoDisplayGate.defaultHoldSeconds)
+          .clamp(0.0, _holdMax);
 
     final savedHistory = prefs.getInt('historyMinutes');
     if (savedHistory != null && _historyMinuteOptions.contains(savedHistory)) {
@@ -296,6 +313,120 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  static const double _showAboveMin = 0.05, _showAboveMax = 0.5;
+  static const double _hysteresisMax = 0.2, _holdMax = 10;
+
+  Future<void> _saveDisplaySettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('showConfidence', _displayGate.showAbove);
+    await prefs.setDouble('confidenceHysteresis', _displayGate.hysteresis);
+    await prefs.setDouble('holdSeconds', _displayGate.holdSeconds);
+  }
+
+  /// Sliders for when the readout shows a BPM and how long it holds it.
+  void _showDetectionSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) {
+          final g = _displayGate;
+          void change(void Function() f) {
+            setSheet(f);
+            // Re-evaluate the readout with the new settings.
+            setState(() {});
+            _saveDisplaySettings();
+          }
+
+          Widget slider(String title, String value, String help, double v,
+                  double min, double max, int divisions,
+                  ValueChanged<double> onChanged) =>
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Expanded(child: Text(title)),
+                    Text(value,
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ]),
+                  Slider(
+                    value: v.clamp(min, max),
+                    min: min,
+                    max: max,
+                    divisions: divisions,
+                    onChanged: (x) => change(() => onChanged(x)),
+                  ),
+                  Text(help,
+                      style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                  const SizedBox(height: 16),
+                ],
+              );
+
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Tempo readout',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  slider(
+                    'Show tempo at confidence',
+                    g.showAbove.toStringAsFixed(2),
+                    'Higher waits for a clearer beat before showing a BPM '
+                        'instead of "Listening…".',
+                    g.showAbove,
+                    _showAboveMin,
+                    _showAboveMax,
+                    9,
+                    (x) => g.showAbove = x,
+                  ),
+                  slider(
+                    'Hysteresis',
+                    g.hysteresis.toStringAsFixed(2),
+                    'Once showing, the tempo stays until confidence falls '
+                        '${g.hysteresis.toStringAsFixed(2)} below that '
+                        '(to ${g.hideBelow.toStringAsFixed(2)}).',
+                    g.hysteresis,
+                    0,
+                    _hysteresisMax,
+                    20,
+                    (x) => g.hysteresis = x,
+                  ),
+                  slider(
+                    'Hold before losing the tempo',
+                    '${g.holdSeconds.toStringAsFixed(1)} s',
+                    'After the beat goes weak or stops, keep showing the '
+                        'last tempo this long.',
+                    g.holdSeconds,
+                    0,
+                    _holdMax,
+                    20,
+                    (x) => g.holdSeconds = x,
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => change(() {
+                        g.showAbove = TempoDisplayGate.defaultShowAbove;
+                        g.hysteresis = TempoDisplayGate.defaultHysteresis;
+                        g.holdSeconds = TempoDisplayGate.defaultHoldSeconds;
+                      }),
+                      child: const Text('Reset to defaults'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -488,6 +619,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _updateMetronomeTempo();
       _tempoDetector.reset();
       _currentCalculatedBpm = 0;
+      _displayGate.reset();
       _driftTracker.reset();
       _drift = null;
       _tempoLock.arm(playlist.items[_currentSetlistIndex].bpm.toDouble());
@@ -640,6 +772,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     setState(() {
       _isRecording = false;
       _currentCalculatedBpm = 0;
+      _displayGate.reset();
       _drift = null;
     });
   }
@@ -679,14 +812,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (identical(before, now)) return;
     setState(() {
       _detectionConfidence = now?.confidence ?? 0;
-      _currentCalculatedBpm =
-          (now == null || now.confidence < _minDisplayConfidence) ? 0 : now.bpm;
+      _currentCalculatedBpm = _displayGate.update(now, DateTime.now());
       final playlist = _playlists[_currentPlaylistIndex];
       _drift = playlist.items.isEmpty || _freeRunning
           ? null
           : _driftTracker.update(_currentCalculatedBpm,
               playlist.items[_currentSetlistIndex].bpm.toDouble(),
-              confidence: _detectionConfidence);
+              confidence: _displayGate.confidence);
     });
 
     if (_isMetronomePlaying &&
@@ -1328,6 +1460,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               onTap: () {
                 Navigator.pop(context); // close drawer
                 _showImportDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Tempo readout'),
+              subtitle: const Text('Thresholds, hysteresis, hold'),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _showDetectionSettings();
               },
             ),
             ListTile(

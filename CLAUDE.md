@@ -58,6 +58,11 @@ maintained.
   metronome can auto-pause.
 - `test/tempo_detector_test.dart` — synthesizes audio (drums, snaps, piano,
   guitar, legato bass, swing, 3/4, tempo change, noise) and checks detection.
+- `lib/tempo_display_gate.dart` — `TempoDisplayGate`: when the readout shows
+  a BPM instead of "Listening…" — show at confidence ≥ 0.2, keep until it falls
+  0.1 lower (hysteresis), then hold the last BPM 3 s. All three are sliders in
+  the drawer's "Tempo readout" sheet. Pure Dart; tests in
+  `test/tempo_display_gate_test.dart`.
 - `lib/tempo_drift.dart` — `TempoDriftTracker`: on tempo (±2%) / drifting
   (2–5%) / off (>5%) vs the song's BPM, with 1% hysteresis and half/double-time
   handling; drives the readout colour and rushing/dragging badge. Pure Dart.
@@ -120,7 +125,8 @@ maintained.
 
 Persisted in `SharedPreferences`: `playlists` (JSON), `preferredMinBpm`,
 `preferredMaxBpm`, `historyMinutes`, `currentPlaylist`, `currentSong`,
-`bandIcon` (session icon index 0..95).
+`bandIcon` (session icon index 0..95), `showConfidence`,
+`confidenceHysteresis`, `holdSeconds` (tempo readout gate).
 Changing their shape needs a migration or a tolerant loader; new song fields
 must default sensibly in `SetlistItem.fromJson` (see `playlist_test.dart`).
 
