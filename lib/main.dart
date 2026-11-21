@@ -2464,21 +2464,41 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       ],
     );
 
-    final advanceRow = Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 12,
-      runSpacing: 4,
-      children: [
-        SegmentedButton<ShowAdvance>(
-          showSelectedIcon: false,
-          style: const ButtonStyle(visualDensity: VisualDensity.compact),
-          segments: const [
-            ButtonSegment(value: ShowAdvance.whole, label: Text('Next whole')),
-            ButtonSegment(value: ShowAdvance.sub, label: Text('Next sub')),
+    Widget stepper(String name, VoidCallback down, VoidCallback up) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton.outlined(
+              tooltip: '$name down',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(down),
+              icon: const Icon(Icons.remove),
+            ),
+            SizedBox(
+              width: 56,
+              child: Text(name,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey[400], fontSize: 13)),
+            ),
+            IconButton.outlined(
+              tooltip: '$name up',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(up),
+              icon: const Icon(Icons.add),
+            ),
           ],
-          selected: {draft.advance},
-          onSelectionChanged: (s) => setState(() => draft.advance = s.first),
+        );
+
+    // Adjust the number and letter before committing.
+    final advanceRow = Column(
+      children: [
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          children: [
+            stepper('Number', () => draft.stepNumber(-1), () => draft.stepNumber(1)),
+            stepper('Letter', () => draft.stepSuffix(-1), () => draft.stepSuffix(1)),
+          ],
         ),
         Text(
           duplicate
