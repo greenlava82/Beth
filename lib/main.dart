@@ -44,6 +44,20 @@ class BethApp extends StatelessWidget {
         brightness: Brightness.dark,
         primarySwatch: Colors.teal,
         useMaterial3: true,
+        // Snackbars: a floating, rounded card in the app's indigo with the
+        // lavender accent, instead of the default light-grey bar.
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF2B2466),
+          contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
+          actionTextColor: const Color(0xFFCFBCFF),
+          elevation: 6,
+          insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: const BorderSide(color: Color(0x33CFBCFF)),
+          ),
+        ),
       ),
       home: const MetronomeScreen(),
     );
@@ -529,6 +543,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
         content: Text('Saved $captured BPM to "${song.name}" (was $previous)'),
+        // A snackbar with an action stays up forever unless told otherwise.
+        persist: false,
+        duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () => _setSongBpm(song, previous),
@@ -1361,6 +1378,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
         content: Text(message),
+        persist: false,
+        duration: const Duration(seconds: 4),
         action: undo == null ? null : SnackBarAction(label: 'Undo', onPressed: undo),
       ));
   }
@@ -2375,6 +2394,8 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                             ..hideCurrentSnackBar()
                             ..showSnackBar(SnackBar(
                               content: Text('Removed "${removed.name}"'),
+                              persist: false,
+                              duration: const Duration(seconds: 4),
                               action: SnackBarAction(
                                 label: 'Undo',
                                 onPressed: () {
