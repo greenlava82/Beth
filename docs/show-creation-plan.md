@@ -5,7 +5,8 @@ capture each song's tempo, give it a number, and name things later. It reuses
 free-running's graph-only layout and detector handling, the existing nudge
 buttons and `_setSongBpm`.
 
-Status: planned, not started.
+Status: implemented (all six steps). The scale readout shows the unrounded
+scaled heard tempo; Capture saves it rounded.
 
 ## Decisions
 
