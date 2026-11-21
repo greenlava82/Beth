@@ -1,0 +1,145 @@
+/// Working state for show creation mode: the BPM being captured, the
+/// half/double-time scale, and the pending song label. Pure Dart.
+library;
+
+import 'show_numbering.dart';
+
+/// Half-time / double-time display modifier for the song being captured.
+enum ShowScale {
+  half(0.5),
+  normal(1),
+  twice(2);
+
+  const ShowScale(this.factor);
+  final double factor;
+}
+
+/// How the pending label advances after a commit.
+enum ShowAdvance { whole, sub }
+
+/// A song ready to append to the show's playlist.
+typedef ShowSong = ({String name, int bpm});
+
+class ShowDraft {
+  ShowDraft({String pendingLabel = '1', this.advance = ShowAdvance.whole})
+      : _pendingLabel = pendingLabel,
+        _nextDefault = pendingLabel;
+
+  static const int minBpm = 30;
+  static const int maxBpm = 300;
+
+  ShowAdvance advance;
+
+  int? _bpm;
+  ShowScale _scale = ShowScale.normal;
+  String _pendingLabel;
+  // Last parseable label, used when a free-text label like "intro" is
+  // committed and the sequence should carry on from where it was.
+  String _nextDefault;
+
+  /// The working BPM, or null before the first capture/tap/nudge.
+  int? get bpm => _bpm;
+  ShowScale get scale => _scale;
+  String get pendingLabel => _pendingLabel;
+
+  String _title = '';
+
+  /// Optional song title; the committed name is "1a. Title".
+  String get title => _title;
+  set title(String v) => _title = v.trim();
+
+  /// The name the song will get on commit: "1a. Title", or just "1a".
+  String get pendingName {
+    final label = _pendingLabel.trim();
+    return _title.isEmpty ? label : '$label. $_title';
+  }
+
+  static int _clamp(num v) => v.round().clamp(minBpm, maxBpm);
+
+  /// Sets the working BPM from the heard tempo, scaled. Overwrites.
+  void capture(double heardBpm) => _bpm = _clamp(heardBpm * _scale.factor);
+
+  /// What a capture would give right now (for the live readout).
+  int scaled(double heardBpm) => _clamp(heardBpm * _scale.factor);
+
+  /// Sets the working BPM directly (tap tempo); ignores the scale.
+  void setBpm(double bpm) => _bpm = _clamp(bpm);
+
+  /// Adds [delta] to the working BPM; ignores the scale. No-op before a
+  /// BPM has been set.
+  void nudge(int delta) {
+    final b = _bpm;
+    if (b != null) _bpm = _clamp(b + delta);
+  }
+
+  /// Selects a scale. Selecting the active non-normal option returns to
+  /// normal; options replace each other rather than stack.
+  void selectScale(ShowScale s) {
+    _scale = (s == _scale && s != ShowScale.normal) ? ShowScale.normal : s;
+  }
+
+  /// Sets the label by hand; a parseable value becomes the base for later
+  /// advances.
+  void setPendingLabel(String label) {
+    _pendingLabel = label;
+    if (ShowLabel.parse(label) != null) _nextDefault = label.trim();
+  }
+
+  ShowLabel get _stepBase =>
+      ShowLabel.parse(_pendingLabel) ??
+      ShowLabel.parse(_nextDefault) ??
+      const ShowLabel(1);
+
+  /// Bumps the song number up or down (minimum 1); the letter is dropped,
+  /// so "3b" + 1 is "4". Starts from the last numeric label if the pending
+  /// one is free text.
+  void stepNumber(int delta) {
+    final n = _stepBase.number + delta;
+    setPendingLabel('${n < 1 ? 1 : n}');
+  }
+
+  /// Steps the letter: "3" → "3a" → "3b"; down again to "3a" → "3".
+  void stepSuffix(int delta) {
+    final base = _stepBase;
+    var suffix = base.suffix;
+    for (var i = 0; i < delta.abs(); i++) {
+      suffix = delta > 0 ? nextSuffix(suffix) : prevSuffix(suffix);
+    }
+    setPendingLabel('${base.number}$suffix');
+  }
+
+  /// Whether [label] matches the number of one of the [existing] song names
+  /// (case-insensitive; "1a. Title" has the number "1a").
+  static bool isDuplicate(String label, Iterable<String> existing) {
+    final l = label.trim().toLowerCase();
+    if (l.isEmpty) return false;
+    return existing.any((e) {
+      final name = e.trim().toLowerCase();
+      return name == l || name.startsWith('$l. ');
+    });
+  }
+
+  /// Finishes the current song: returns it and resets the BPM and scale,
+  /// advancing the pending label. Null if there is no BPM or label yet.
+  ShowSong? commit() {
+    final b = _bpm;
+    final label = _pendingLabel.trim();
+    if (b == null || label.isEmpty) return null;
+    final name = pendingName;
+    final next = advance == ShowAdvance.whole
+        ? nextWholeLabel(label)
+        : nextSubLabel(label);
+    _pendingLabel = next ?? _nextDefault;
+    if (next != null) _nextDefault = next;
+    _bpm = null;
+    _scale = ShowScale.normal;
+    _title = '';
+    return (name: name, bpm: b);
+  }
+
+  /// Drops the working BPM and scale (leaving the mode); the label stays.
+  void resetWorking() {
+    _bpm = null;
+    _scale = ShowScale.normal;
+  }
+}

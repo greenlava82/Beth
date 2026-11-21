@@ -24,6 +24,8 @@ import 'band_sync_protocol.dart';
 import 'band_sync_screen.dart';
 import 'playlist.dart';
 import 'playlist_text.dart';
+import 'show_draft.dart';
+import 'tap_tempo.dart';
 import 'tempo_detector.dart';
 import 'tempo_display_gate.dart';
 import 'tempo_drift.dart';
@@ -32,6 +34,10 @@ import 'tempo_lock.dart';
 void main() {
   runApp(const BethApp());
 }
+
+/// What the main screen is doing: playing a setlist, free-running (no song
+/// target), or building a show (capturing tempos into a new playlist).
+enum _ScreenMode { setlist, freeRunning, show }
 
 class BethApp extends StatelessWidget {
   const BethApp({super.key});
@@ -120,9 +126,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   final TempoDriftTracker _driftTracker = TempoDriftTracker();
   // Free-running mode: no song target; the detector leans toward the most
   // common tempos and the graph fills the screen.
-  bool _freeRunning = false;
+  _ScreenMode _mode = _ScreenMode.setlist;
   static const double _commonTempoBpm = 120;
   static const RangeValues _commonTempoRange = RangeValues(80, 160);
+  // Show creation mode: listen wide, since any song might come next.
+  static const RangeValues _showTempoRange = RangeValues(40, 240);
+  ShowDraft _showDraft = ShowDraft();
+  // The playlist the show is being built into (null outside the mode).
+  Playlist? _showPlaylist;
+  final TapTempo _tapTempo = TapTempo();
+  final Stopwatch _tapClock = Stopwatch()..start();
   TempoDrift? _drift;
   // Preferred tempo range: picks between half/double-time readings.
   static const double _rangeLimitMin = 40;
@@ -465,6 +478,19 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   void _updateMetronomeTempo() {
     if (_playlists.isEmpty) return;
     
+    // Another playlist was picked (or the show's was deleted): the show is over.
+    if (_mode == _ScreenMode.show &&
+        !identical(_playlists[_currentPlaylistIndex], _showPlaylist)) {
+      _endShowMode();
+    }
+    if (_mode == _ScreenMode.show) {
+      // Plays the working BPM, and only once the user presses play.
+      final bpm = _showDraft.bpm;
+      if (bpm == null) _isMetronomePlaying = false;
+      _applyMetronomeBpm(bpm ?? 120);
+      return;
+    }
+
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty) {
       _metronomeController.stop();
@@ -478,11 +504,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
 
     final targetBpm = playlist.items[_currentSetlistIndex].bpm;
-    if (!_freeRunning) {
+    if (_mode == _ScreenMode.setlist) {
       _tempoDetector.expectedBpm = targetBpm.toDouble();
       _centerPreferredRangeOn(targetBpm.toDouble());
     }
-    final msPerBeat = (60000 / targetBpm).round();
+    _applyMetronomeBpm(targetBpm);
+    _saveSetlistPosition();
+  }
+
+  void _applyMetronomeBpm(int bpm) {
+    final msPerBeat = (60000 / bpm).round();
     _metronomeController.duration = Duration(milliseconds: msPerBeat);
     if (_isMetronomePlaying) {
       _metronomeController.repeat();
@@ -490,7 +521,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _metronomeController.stop();
       _metronomeController.reset();
     }
-    _saveSetlistPosition();
   }
 
   /// Remember the current playlist and song across restarts. Skipped while
@@ -525,6 +555,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   }
 
   void _nudgeCurrentSongBpm(int delta) {
+    if (_mode == _ScreenMode.show) {
+      setState(() {
+        _showDraft.nudge(delta);
+        _updateMetronomeTempo();
+      });
+      return;
+    }
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty) return;
     final song = playlist.items[_currentSetlistIndex];
@@ -553,6 +590,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       ));
   }
 
+  bool _canNudge(Playlist playlist) => _mode == _ScreenMode.show
+      ? _showDraft.bpm != null
+      : playlist.items.isNotEmpty;
+
   Widget _buildNudgeColumn(Playlist playlist, List<int> deltas) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -564,7 +605,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             child: OutlinedButton(
               style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
               onPressed:
-                  playlist.items.isEmpty ? null : () => _nudgeCurrentSongBpm(d),
+                  !_canNudge(playlist) ? null : () => _nudgeCurrentSongBpm(d),
               child: Text(
                 d > 0 ? '+$d' : '−${-d}',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -604,9 +645,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   /// count-in lock, drop the song target, and weight detection toward the
   /// most common tempos. Off: back to the current song's target and range.
   void _setFreeRunning(bool on) {
+    if (on && _mode == _ScreenMode.show) _setShowMode(false);
     _cancelLockStop();
     setState(() {
-      _freeRunning = on;
+      _mode = on ? _ScreenMode.freeRunning : _ScreenMode.setlist;
       _driftTracker.reset();
       _drift = null;
       if (on) {
@@ -620,6 +662,143 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     });
   }
 
+  /// Enter or leave show creation mode. Entering starts a new, empty
+  /// playlist for the show and listens wide with no target. Leaving keeps
+  /// the playlist (unless nothing was added) and goes back to the setlist.
+  void _setShowMode(bool on) {
+    if (on == (_mode == _ScreenMode.show)) return;
+    _cancelLockStop();
+    if (on) {
+      final playlist = Playlist(_uniquePlaylistName('New show'), []);
+      setState(() {
+        _playlists.add(playlist);
+        _currentPlaylistIndex = _playlists.length - 1;
+        _currentSetlistIndex = 0;
+        _showPlaylist = playlist;
+        _mode = _ScreenMode.show;
+        _showDraft = ShowDraft(advance: _showDraft.advance);
+        _tapTempo.reset();
+        _tempoLock.disarm();
+        _isMetronomePlaying = false;
+        _driftTracker.reset();
+        _drift = null;
+        _tempoDetector.expectedBpm = null;
+        _tempoDetector.setPreferredRange(
+            _showTempoRange.start, _showTempoRange.end);
+        _updateMetronomeTempo();
+      });
+      _savePlaylists();
+      return;
+    }
+    final playlist = _showPlaylist;
+    setState(_endShowMode);
+    if (playlist != null && playlist.items.isEmpty && _playlists.length > 1) {
+      _changePlaylists(() => _playlists.remove(playlist));
+    } else {
+      setState(_updateMetronomeTempo);
+    }
+  }
+
+  /// Drop show state and go back to setlist mode. Doesn't call setState.
+  void _endShowMode() {
+    _mode = _ScreenMode.setlist;
+    _showPlaylist = null;
+    _showDraft.resetWorking();
+    _tapTempo.reset();
+    _isMetronomePlaying = false;
+    _currentSetlistIndex = 0;
+  }
+
+  /// Set the working BPM from the heard tempo (scaled).
+  void _showCapture() {
+    if (_currentCalculatedBpm <= 0) return;
+    setState(() {
+      _showDraft.capture(_currentCalculatedBpm);
+      _updateMetronomeTempo();
+    });
+  }
+
+  void _showTap() {
+    final bpm = _tapTempo.tap(_tapClock.elapsed);
+    if (bpm == null) return;
+    setState(() {
+      _showDraft.setBpm(bpm);
+      _updateMetronomeTempo();
+    });
+  }
+
+  /// Append the working song to the show, with an Undo.
+  void _commitShowSong() {
+    final playlist = _showPlaylist;
+    if (playlist == null) return;
+    final label = _showDraft.pendingLabel, title = _showDraft.title;
+    final song = _showDraft.commit();
+    if (song == null) return;
+    final item = SetlistItem(song.name, song.bpm);
+    setState(() {
+      playlist.items.add(item);
+      _tapTempo.reset();
+      _updateMetronomeTempo();
+    });
+    _savePlaylists();
+    _showSnack('Added "${song.name}" at ${song.bpm} BPM', undo: () {
+      setState(() {
+        playlist.items.remove(item);
+        _showDraft.setPendingLabel(label);
+        _showDraft.title = title;
+        _showDraft.setBpm(song.bpm.toDouble());
+        _updateMetronomeTempo();
+      });
+      _savePlaylists();
+    });
+  }
+
+  /// Edit the song's number and optional title; the song is named
+  /// "1a. Title" (or just "1a" with no title).
+  Future<void> _editShowLabel() async {
+    final numberController = TextEditingController(text: _showDraft.pendingLabel);
+    final titleController = TextEditingController(text: _showDraft.title);
+    void done(BuildContext context) =>
+        Navigator.pop(context, (numberController.text, titleController.text));
+    final result = await showDialog<(String, String)>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Song'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: numberController,
+              decoration: const InputDecoration(
+                  labelText: 'Number', hintText: 'e.g. 7, 4c'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: titleController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                  labelText: 'Title (optional)', hintText: 'e.g. Blue Moon'),
+              onSubmitted: (_) => done(context),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          TextButton(onPressed: () => done(context), child: const Text('OK')),
+        ],
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _showDraft.setPendingLabel(result.$1.trim());
+        _showDraft.title = result.$2;
+      });
+    }
+  }
+
   /// Move to song [index] of the current playlist and start its count-in:
   /// the metronome starts on beat 1, the detector listens afresh, and the
   /// metronome pauses once the band locks onto the song's marking.
@@ -627,7 +806,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty) return;
     // Picking a song means playing to its target again.
-    if (_freeRunning) _setFreeRunning(false);
+    if (_mode == _ScreenMode.freeRunning) _setFreeRunning(false);
     _cancelLockStop();
     setState(() {
       _currentSetlistIndex = index.clamp(0, playlist.items.length - 1);
@@ -651,6 +830,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   /// Next song; from the last song, go back to the top of the set (and say
   /// so) rather than wrapping silently.
   void _advanceSetlist() {
+    if (_mode == _ScreenMode.show) return;
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty) return;
     if (_isLastSong) {
@@ -831,7 +1011,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _detectionConfidence = now?.confidence ?? 0;
       _currentCalculatedBpm = _displayGate.update(now, DateTime.now());
       final playlist = _playlists[_currentPlaylistIndex];
-      _drift = playlist.items.isEmpty || _freeRunning
+      _drift = playlist.items.isEmpty || _mode != _ScreenMode.setlist
           ? null
           : _driftTracker.update(_currentCalculatedBpm,
               playlist.items[_currentSetlistIndex].bpm.toDouble(),
@@ -889,13 +1069,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         playlistName: playlist.name,
         songs: [for (final song in playlist.items) song.name],
         appVersion: _appVersion?.short);
-    final hasSong = !_freeRunning && playlist.items.isNotEmpty;
+    final hasSong = _mode == _ScreenMode.setlist && playlist.items.isNotEmpty;
     return (
       details: details,
       state: BandSyncState(
         sessionId: 0,
         metronomePlaying: _isMetronomePlaying,
-        freeRunning: _freeRunning,
+        freeRunning: _mode != _ScreenMode.setlist,
         drift: _drift?.level,
         rushing: _drift?.isRushing ?? false,
         songIndex: hasSong ? _currentSetlistIndex : null,
@@ -1466,6 +1646,18 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             ),
             const Divider(),
             ListTile(
+              leading: Icon(_mode == _ScreenMode.show
+                  ? Icons.check
+                  : Icons.playlist_add),
+              title: Text(_mode == _ScreenMode.show
+                  ? 'Done building show'
+                  : 'Build a show'),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _setShowMode(_mode != _ScreenMode.show);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.add),
               title: const Text('New Playlist'),
               onTap: () {
@@ -1574,11 +1766,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   /// headroom on top for the tempo readout. Returns (minY, maxY, step).
   /// The current song's BPM, or null with an empty playlist.
   /// The range the detector currently favours (shaded on the graph).
-  RangeValues get _bandRange => _freeRunning ? _commonTempoRange : _preferredRange;
+  RangeValues get _bandRange => switch (_mode) {
+        _ScreenMode.freeRunning => _commonTempoRange,
+        _ScreenMode.show => _showTempoRange,
+        _ScreenMode.setlist => _preferredRange,
+      };
 
   double? get _currentTargetBpm {
     final playlist = _playlists[_currentPlaylistIndex];
-    if (playlist.items.isEmpty || _freeRunning) return null;
+    if (playlist.items.isEmpty || _mode != _ScreenMode.setlist) return null;
     return playlist.items[_currentSetlistIndex].bpm.toDouble();
   }
 
@@ -1746,7 +1942,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   Widget _buildTempoReadout(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final hasTempo = _currentCalculatedBpm > 0;
-    final parts = _currentCalculatedBpm.toStringAsFixed(1).split('.');
+    // In show mode the half/double-time scale applies to what's shown.
+    final scale = _mode == _ScreenMode.show ? _showDraft.scale : ShowScale.normal;
+    final shownBpm = _currentCalculatedBpm * scale.factor;
+    final parts = shownBpm.toStringAsFixed(1).split('.');
     const shadow = [Shadow(blurRadius: 12, color: Colors.black)];
     return Center(
       child: Container(
@@ -1770,6 +1969,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                         text: '.${parts[1]}',
                         style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
                       ),
+                      if (scale != ShowScale.normal)
+                        TextSpan(
+                          text: scale == ShowScale.half ? ' ×½' : ' ×2',
+                          style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Theme.of(context).colorScheme.secondary),
+                        ),
                       TextSpan(
                         text: '  BPM',
                         style: TextStyle(
@@ -1915,14 +2122,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             icon: Image.asset('assets/branding/splash.png', height: 40),
           ),
         ),
-        title: Text(_freeRunning ? 'Free running' : playlist.name,
+        title: Text(_mode == _ScreenMode.freeRunning ? 'Free running' : playlist.name,
             overflow: TextOverflow.ellipsis),
         actions: [
           _buildBandMenu(),
           IconButton(
-            tooltip: _freeRunning ? 'Back to setlist' : 'Free-running mode',
-            icon: Icon(_freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
-            onPressed: () => _setFreeRunning(!_freeRunning),
+            tooltip: _mode == _ScreenMode.freeRunning ? 'Back to setlist' : 'Free-running mode',
+            icon: Icon(_mode == _ScreenMode.freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
+            onPressed: () => _setFreeRunning(_mode != _ScreenMode.freeRunning),
           ),
           IconButton(
             icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),
@@ -1942,7 +2149,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       // this also keeps clear of the camera cut-out).
       body: SafeArea(
         top: false,
-        child: _freeRunning
+        child: _mode == _ScreenMode.freeRunning
             // Free-running: just the graph, full screen, either orientation.
             ? _buildGraphSection(context)
             : MediaQuery.orientationOf(context) == Orientation.landscape
@@ -1982,7 +2189,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         children: [
           // The preferred-range slider is for setlist mode; free-running
           // uses the common-tempo range.
-          if (!_freeRunning)
+          if (_mode == _ScreenMode.setlist)
             Row(
               children: [
                 Text(
@@ -2047,11 +2254,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   Widget _buildMetronomeCircle(
       BuildContext context, Playlist playlist, SetlistItem currentItem,
       {double size = 136}) {
+    final show = _mode == _ScreenMode.show;
+    final enabled = show ? _showDraft.bpm != null : playlist.items.isNotEmpty;
     return Semantics(
       button: true,
       label: _isMetronomePlaying ? 'Stop metronome' : 'Start metronome',
       child: GestureDetector(
-        onTap: playlist.items.isEmpty ? null : _toggleMetronome,
+        onTap: !enabled ? null : _toggleMetronome,
         child: AnimatedBuilder(
           animation: _pulseAnimation,
           builder: (context, child) {
@@ -2060,12 +2269,12 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _isMetronomePlaying && playlist.items.isNotEmpty
+                color: _isMetronomePlaying && enabled
                     ? Theme.of(context).colorScheme.secondary
                         .withAlpha(((1.0 - _pulseAnimation.value) * 255).toInt())
                     : Theme.of(context).colorScheme.surfaceContainerHighest,
                 boxShadow: [
-                  if (_isMetronomePlaying && playlist.items.isNotEmpty)
+                  if (_isMetronomePlaying && enabled)
                     BoxShadow(
                       color: Theme.of(context)
                           .colorScheme
@@ -2082,12 +2291,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                   // Spacer matching the icon below keeps the
                   // number centred in the circle.
                   SizedBox(height: size * 0.2),
-                  Text(
-                    '${currentItem.bpm}',
-                    style: TextStyle(
-                      fontSize: size * 0.35,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      show ? '${_showDraft.bpm ?? '—'}' : '${currentItem.bpm}',
+                      style: TextStyle(
+                        fontSize: size * 0.35,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                   Icon(
@@ -2200,7 +2412,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
                 onPressed:
-                    playlist.items.isEmpty ? null : () => _nudgeCurrentSongBpm(d),
+                    !_canNudge(playlist) ? null : () => _nudgeCurrentSongBpm(d),
                 child: Text(
                   d > 0 ? '+$d' : '−${-d}',
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
@@ -2212,11 +2424,192 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
+  /// Show creation mode's bottom (portrait) / right (landscape) panel:
+  /// working BPM on the metronome circle with nudges, the half/double-time
+  /// scale, Capture and Tap, and the song number with Commit.
+  Widget _buildShowControls(
+      BuildContext context, Playlist playlist, SetlistItem currentItem,
+      {bool landscape = false}) {
+    final draft = _showDraft;
+    final heard = _currentCalculatedBpm > 0;
+    final label = draft.pendingLabel.trim();
+    final duplicate = ShowDraft.isDuplicate(label, [for (final s in playlist.items) s.name]);
+
+    final scaleSelector = SegmentedButton<ShowScale>(
+      showSelectedIcon: false,
+      emptySelectionAllowed: true,
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
+      segments: const [
+        ButtonSegment(value: ShowScale.half, label: Text('½')),
+        ButtonSegment(value: ShowScale.normal, label: Text('1')),
+        ButtonSegment(value: ShowScale.twice, label: Text('2')),
+      ],
+      selected: {draft.scale},
+      // Tapping the active option arrives as an empty selection.
+      onSelectionChanged: (s) => setState(
+          () => draft.selectScale(s.isEmpty ? draft.scale : s.first)),
+    );
+
+    final captureTap = Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 12,
+      runSpacing: 8,
+      children: [
+        FilledButton.tonalIcon(
+          onPressed: heard ? _showCapture : null,
+          icon: const Icon(Icons.hearing),
+          label: Text(heard
+              ? 'Capture ${draft.scaled(_currentCalculatedBpm)}'
+              : 'Capture'),
+        ),
+        OutlinedButton.icon(
+          onPressed: _showTap,
+          icon: const Icon(Icons.touch_app),
+          label: const Text('Tap'),
+        ),
+      ],
+    );
+
+    final labelCommit = Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 8,
+      children: [
+        ActionChip(
+          tooltip: 'Edit song number',
+          avatar: duplicate
+              ? const Icon(Icons.warning_amber, color: Colors.amber)
+              : null,
+          label: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Text(
+              label.isEmpty
+                  ? 'Number?'
+                  : draft.title.isEmpty
+                      ? 'Song $label'
+                      : draft.pendingName,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          onPressed: _editShowLabel,
+        ),
+        FilledButton.icon(
+          onPressed: draft.bpm == null || label.isEmpty ? null : _commitShowSong,
+          icon: const Icon(Icons.add),
+          label: const Text('Commit'),
+        ),
+      ],
+    );
+
+    Widget stepper(String name, VoidCallback down, VoidCallback up) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton.outlined(
+              tooltip: '$name down',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(down),
+              icon: const Icon(Icons.remove),
+            ),
+            SizedBox(
+              width: 56,
+              child: Text(name,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey[400], fontSize: 13)),
+            ),
+            IconButton.outlined(
+              tooltip: '$name up',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(up),
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        );
+
+    // Adjust the number and letter before committing.
+    final advanceRow = Column(
+      children: [
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          children: [
+            stepper('Number', () => draft.stepNumber(-1), () => draft.stepNumber(1)),
+            stepper('Letter', () => draft.stepSuffix(-1), () => draft.stepSuffix(1)),
+          ],
+        ),
+        Text(
+          duplicate
+              ? 'Already used'
+              : '${playlist.items.length} song${playlist.items.length == 1 ? '' : 's'}',
+          style: TextStyle(
+              color: duplicate ? Colors.amber : Colors.grey[500], fontSize: 12),
+        ),
+      ],
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+      child: SingleChildScrollView(
+        child: landscape
+            ? Row(
+                children: [
+                  _buildMetronomeCircle(context, playlist, currentItem, size: 112),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildNudgeRow(playlist),
+                        const SizedBox(height: 8),
+                        scaleSelector,
+                        const SizedBox(height: 8),
+                        captureTap,
+                        const SizedBox(height: 8),
+                        labelCommit,
+                        const SizedBox(height: 4),
+                        advanceRow,
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildNudgeColumn(playlist, const [-1, -5]),
+                      const SizedBox(width: 16),
+                      _buildMetronomeCircle(context, playlist, currentItem),
+                      const SizedBox(width: 16),
+                      _buildNudgeColumn(playlist, const [1, 5]),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  scaleSelector,
+                  const SizedBox(height: 12),
+                  captureTap,
+                  const SizedBox(height: 16),
+                  labelCommit,
+                  const SizedBox(height: 8),
+                  advanceRow,
+                ],
+              ),
+      ),
+    );
+  }
+
   /// Bottom (portrait) / right (landscape): metronome, song info and the
   /// pinned Previous/Next controls.
   Widget _buildControlsSection(
       BuildContext context, Playlist playlist, SetlistItem currentItem,
       {bool landscape = false}) {
+    if (_mode == _ScreenMode.show) {
+      return _buildShowControls(context, playlist, currentItem,
+          landscape: landscape);
+    }
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),

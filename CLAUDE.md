@@ -117,6 +117,12 @@ maintained.
 - An Android leader's Bluetooth address changes on every re-advertise
   (each update), so a GATT connection must use the address from the
   newest advertisement immediately; a cached address times out.
+- `lib/show_numbering.dart`, `lib/tap_tempo.dart`, `lib/show_draft.dart` —
+  show creation mode, pure Dart. Numbering parses/advances labels ("3b" → "4",
+  "3" → "3a"); `TapTempo` averages the last 6 taps (reset after 2 s idle);
+  `ShowDraft` holds the working BPM, ½/1/2 scale, pending label and
+  whole/sub auto-advance (`capture`, `setBpm`, `nudge`, `commit`). Tests:
+  `show_numbering_test.dart`, `tap_tempo_test.dart`, `show_draft_test.dart`.
 - `test/tempo_lock_test.dart` — unit tests for `TempoLock`.
 - `test/tempo_drift_test.dart` — unit tests for `TempoDriftTracker`.
 - `test/playlist_test.dart`, `test/playlist_text_test.dart` — model, JSON
@@ -136,6 +142,16 @@ playlist list changes go through `_changePlaylists()` (keeps the current
 playlist selected). `_setFreeRunning()` toggles free-running mode (no target:
 detector hint 120 BPM, preferred range 80–160, graph-only layout);
 `_updateMetronomeTempo()` must not retune the detector while it's on.
+
+Screen mode is `_ScreenMode` (setlist / freeRunning / show). Show creation
+mode (`_setShowMode()`, app bar playlist_add button) adds a new "New show"
+playlist and builds it from captured or tapped tempos: the working BPM lives
+in `ShowDraft`, the detector listens wide (`_showTempoRange` 40–240, no
+expected BPM, never retuned by `_updateMetronomeTempo()`), the metronome plays
+the working BPM only when started, and `TempoLock`/drift are off. Picking
+another playlist ends the mode (`_updateMetronomeTempo()` notices); an empty
+show is dropped on exit. UI is `_buildShowControls()`. Plan:
+`docs/show-creation-plan.md`.
 
 The main screen is built from `_buildGraphSection()` and
 `_buildControlsSection()` (portrait: stacked; landscape: side by side;
