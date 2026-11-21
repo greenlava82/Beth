@@ -35,6 +35,8 @@ constexpr uint16_t kGreen = rgb(0x30, 0xF0, 0x30);
 constexpr uint16_t kAmber = rgb(0xFF, 0xC1, 0x07);
 constexpr uint16_t kRed = rgb(0xFF, 0x52, 0x52);
 constexpr uint16_t kTeal = rgb(0x64, 0xFF, 0xDA);
+// White for the BPM readout, a little dimmed: pure white is glaring.
+constexpr uint16_t kSoftWhite = rgb(0xC8, 0xC8, 0xC8);
 constexpr uint16_t kGrey = rgb(0x9E, 0x9E, 0x9E);
 constexpr uint16_t kDim = rgb(0x30, 0x30, 0x38);
 constexpr uint16_t kBg = rgb(0x12, 0x10, 0x18);
@@ -64,7 +66,7 @@ uint16_t driftColor(Drift d) {
     case Drift::Off:
       return kRed;
     default:
-      return TFT_WHITE;
+      return kSoftWhite;
   }
 }
 
@@ -127,7 +129,7 @@ void drawSearching(TFT_eSPI& c, int oy) {
   c.setTextColor(kGrey, kBg);
   c.drawString(version, kW - 4, 4 + oy, 1);
   c.setTextDatum(MC_DATUM);
-  c.setTextColor(TFT_WHITE, kBg);
+  c.setTextColor(kSoftWhite, kBg);
   c.drawString("Looking for a leader...", kW / 2, 130 + oy, 4);
   c.setTextColor(kGrey, kBg);
   c.drawString("On the leader's phone, tap the band", kW / 2, 160 + oy, 2);
@@ -139,7 +141,7 @@ void drawSearching(TFT_eSPI& c, int oy) {
 void drawMessage(TFT_eSPI& c, const char* title, const char* detail,
                  int oy) {
   c.setTextDatum(MC_DATUM);
-  c.setTextColor(TFT_WHITE, kBg);
+  c.setTextColor(kSoftWhite, kBg);
   c.drawString(title, kW / 2, 100 + oy, 4);
   c.setTextColor(kGrey, kBg);
   c.drawString(detail, kW / 2, 140 + oy, 2);
@@ -159,7 +161,7 @@ void drawBanner(TFT_eSPI& c, const View& v, int oy) {
   }
   c.fillRect(0, oy, kW, 24, bg);
   c.setTextDatum(MC_DATUM);
-  c.setTextColor(TFT_WHITE, bg);
+  c.setTextColor(kSoftWhite, bg);
   c.drawString(text, kW / 2, 12 + oy, 2);
 }
 
@@ -247,7 +249,7 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
       strlcpy(buf, "--", sizeof buf);
     }
     c.setTextDatum(MR_DATUM);
-    c.setTextColor(TFT_WHITE);
+    c.setTextColor(kSoftWhite);
     c.drawString(buf, kW - 8, 42 + oy, 4);
     c.setTextColor(kGrey);
     c.setTextDatum(TR_DATUM);
@@ -272,7 +274,7 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
   const int songFont = smallNote ? 2 : 4;
   fitText(c, songText, songFont, kW - 16 - targetW, fitted, sizeof fitted);
   c.setTextDatum(ML_DATUM);
-  c.setTextColor(smallNote ? kGrey : TFT_WHITE);
+  c.setTextColor(smallNote ? kGrey : kSoftWhite);
   c.drawString(fitted, 8, 42 + oy, songFont);
 
   // Up next, small, under the song name.
@@ -380,13 +382,13 @@ void drawBars(TFT_eSPI& c, int x, int y, uint8_t bars, uint16_t color) {
 
 void drawPicker(TFT_eSPI& c, const PickerView& p, int oy) {
   c.setTextDatum(ML_DATUM);
-  c.setTextColor(TFT_WHITE, kBg);
+  c.setTextColor(kSoftWhite, kBg);
   c.drawString("Choose a leader", 8, kTitleH / 2 + oy, 4);
   if (p.canGoBack) {
     c.fillRoundRect(kBackX + 8, 4 + oy, kW - kBackX - 14, kTitleH - 8, 6,
                     kRow);
     c.setTextDatum(MC_DATUM);
-    c.setTextColor(TFT_WHITE, kRow);
+    c.setTextColor(kSoftWhite, kRow);
     c.drawString("Back", (kBackX + kW) / 2, kTitleH / 2 + oy, 2);
   }
   c.setTextDatum(ML_DATUM);
@@ -420,7 +422,7 @@ void drawPicker(TFT_eSPI& c, const PickerView& p, int oy) {
     fitText(c, line, 2, kTextRight - kTextX - followW - 40, fitted,
             sizeof fitted);
     c.setTextDatum(ML_DATUM);
-    c.setTextColor(e.live ? TFT_WHITE : kGrey, bg);
+    c.setTextColor(e.live ? kSoftWhite : kGrey, bg);
     c.drawString(fitted, kTextX, mid - 8, 2);
     char code[5];
     bandsync::sessionCode(e.sessionId, code);
