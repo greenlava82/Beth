@@ -42,6 +42,18 @@ class ShowDraft {
   ShowScale get scale => _scale;
   String get pendingLabel => _pendingLabel;
 
+  String _title = '';
+
+  /// Optional song title; the committed name is "1a. Title".
+  String get title => _title;
+  set title(String v) => _title = v.trim();
+
+  /// The name the song will get on commit: "1a. Title", or just "1a".
+  String get pendingName {
+    final label = _pendingLabel.trim();
+    return _title.isEmpty ? label : '$label. $_title';
+  }
+
   static int _clamp(num v) => v.round().clamp(minBpm, maxBpm);
 
   /// Sets the working BPM from the heard tempo, scaled. Overwrites.
@@ -96,25 +108,32 @@ class ShowDraft {
     setPendingLabel('${base.number}$suffix');
   }
 
-  /// Whether [label] matches one of [existing] (case-insensitive).
+  /// Whether [label] matches the number of one of the [existing] song names
+  /// (case-insensitive; "1a. Title" has the number "1a").
   static bool isDuplicate(String label, Iterable<String> existing) {
     final l = label.trim().toLowerCase();
-    return l.isNotEmpty && existing.any((e) => e.trim().toLowerCase() == l);
+    if (l.isEmpty) return false;
+    return existing.any((e) {
+      final name = e.trim().toLowerCase();
+      return name == l || name.startsWith('$l. ');
+    });
   }
 
   /// Finishes the current song: returns it and resets the BPM and scale,
   /// advancing the pending label. Null if there is no BPM or label yet.
   ShowSong? commit() {
     final b = _bpm;
-    final name = _pendingLabel.trim();
-    if (b == null || name.isEmpty) return null;
+    final label = _pendingLabel.trim();
+    if (b == null || label.isEmpty) return null;
+    final name = pendingName;
     final next = advance == ShowAdvance.whole
-        ? nextWholeLabel(name)
-        : nextSubLabel(name);
+        ? nextWholeLabel(label)
+        : nextSubLabel(label);
     _pendingLabel = next ?? _nextDefault;
     if (next != null) _nextDefault = next;
     _bpm = null;
     _scale = ShowScale.normal;
+    _title = '';
     return (name: name, bpm: b);
   }
 

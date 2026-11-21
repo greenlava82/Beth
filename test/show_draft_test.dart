@@ -166,4 +166,25 @@ void main() {
     d.commit();
     expect(d.pendingLabel, '2');
   });
+
+  test('title makes the name "1a. Title" and clears on commit', () {
+    final d = ShowDraft(pendingLabel: '1a');
+    d.title = '  Blue Moon ';
+    expect(d.pendingName, '1a. Blue Moon');
+    d.setBpm(90);
+    expect(d.commit(), (name: '1a. Blue Moon', bpm: 90));
+    expect(d.title, '');
+    expect(d.pendingLabel, '2');
+  });
+
+  test('without a title the name is just the number', () {
+    final d = ShowDraft(pendingLabel: '4');
+    expect(d.pendingName, '4');
+  });
+
+  test('duplicates match the number of titled songs', () {
+    expect(ShowDraft.isDuplicate('1a', ['1a. Blue Moon']), isTrue);
+    expect(ShowDraft.isDuplicate('1', ['1a. Blue Moon']), isFalse);
+    expect(ShowDraft.isDuplicate('1', ['1. Intro', '2']), isTrue);
+  });
 }

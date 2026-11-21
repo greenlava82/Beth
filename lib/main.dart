@@ -731,6 +731,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   void _commitShowSong() {
     final playlist = _showPlaylist;
     if (playlist == null) return;
+    final label = _showDraft.pendingLabel, title = _showDraft.title;
     final song = _showDraft.commit();
     if (song == null) return;
     final item = SetlistItem(song.name, song.bpm);
@@ -743,7 +744,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     _showSnack('Added "${song.name}" at ${song.bpm} BPM', undo: () {
       setState(() {
         playlist.items.remove(item);
-        _showDraft.setPendingLabel(song.name);
+        _showDraft.setPendingLabel(label);
+        _showDraft.title = title;
         _showDraft.setBpm(song.bpm.toDouble());
         _updateMetronomeTempo();
       });
@@ -751,30 +753,49 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     });
   }
 
+  /// Edit the song's number and optional title; the song is named
+  /// "1a. Title" (or just "1a" with no title).
   Future<void> _editShowLabel() async {
-    final controller = TextEditingController(text: _showDraft.pendingLabel);
-    final label = await showDialog<String>(
+    final numberController = TextEditingController(text: _showDraft.pendingLabel);
+    final titleController = TextEditingController(text: _showDraft.title);
+    void done(BuildContext context) =>
+        Navigator.pop(context, (numberController.text, titleController.text));
+    final result = await showDialog<(String, String)>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Song number'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'e.g. 7, 4c, intro'),
-          onSubmitted: (v) => Navigator.pop(context, v),
+        title: const Text('Song'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: numberController,
+              decoration: const InputDecoration(
+                  labelText: 'Number', hintText: 'e.g. 7, 4c'),
+              textInputAction: TextInputAction.next,
+            ),
+            TextField(
+              controller: titleController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                  labelText: 'Title (optional)', hintText: 'e.g. Blue Moon'),
+              onSubmitted: (_) => done(context),
+            ),
+          ],
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              child: const Text('OK')),
+          TextButton(onPressed: () => done(context), child: const Text('OK')),
         ],
       ),
     );
-    if (label != null && mounted) {
-      setState(() => _showDraft.setPendingLabel(label.trim()));
+    if (result != null && mounted) {
+      setState(() {
+        _showDraft.setPendingLabel(result.$1.trim());
+        _showDraft.title = result.$2;
+      });
     }
   }
 
@@ -2453,7 +2474,17 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           avatar: duplicate
               ? const Icon(Icons.warning_amber, color: Colors.amber)
               : null,
-          label: Text(label.isEmpty ? 'Number?' : 'Song $label'),
+          label: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Text(
+              label.isEmpty
+                  ? 'Number?'
+                  : draft.title.isEmpty
+                      ? 'Song $label'
+                      : draft.pendingName,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           onPressed: _editShowLabel,
         ),
         FilledButton.icon(
