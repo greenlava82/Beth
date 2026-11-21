@@ -1986,7 +1986,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             Row(
               children: [
                 Text(
-                  'Prefer ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
+                  'Range ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
                   style: TextStyle(color: Colors.grey[400], fontSize: 12),
                 ),
                 Expanded(
