@@ -33,6 +33,10 @@ void main() {
   runApp(const BethApp());
 }
 
+/// What the main screen is doing: playing a setlist, or free-running (no
+/// song target).
+enum _ScreenMode { setlist, freeRunning }
+
 class BethApp extends StatelessWidget {
   const BethApp({super.key});
 
@@ -120,7 +124,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   final TempoDriftTracker _driftTracker = TempoDriftTracker();
   // Free-running mode: no song target; the detector leans toward the most
   // common tempos and the graph fills the screen.
-  bool _freeRunning = false;
+  _ScreenMode _mode = _ScreenMode.setlist;
   static const double _commonTempoBpm = 120;
   static const RangeValues _commonTempoRange = RangeValues(80, 160);
   TempoDrift? _drift;
@@ -478,7 +482,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
 
     final targetBpm = playlist.items[_currentSetlistIndex].bpm;
-    if (!_freeRunning) {
+    if (_mode != _ScreenMode.freeRunning) {
       _tempoDetector.expectedBpm = targetBpm.toDouble();
       _centerPreferredRangeOn(targetBpm.toDouble());
     }
@@ -606,7 +610,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   void _setFreeRunning(bool on) {
     _cancelLockStop();
     setState(() {
-      _freeRunning = on;
+      _mode = on ? _ScreenMode.freeRunning : _ScreenMode.setlist;
       _driftTracker.reset();
       _drift = null;
       if (on) {
@@ -627,7 +631,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty) return;
     // Picking a song means playing to its target again.
-    if (_freeRunning) _setFreeRunning(false);
+    if (_mode == _ScreenMode.freeRunning) _setFreeRunning(false);
     _cancelLockStop();
     setState(() {
       _currentSetlistIndex = index.clamp(0, playlist.items.length - 1);
@@ -831,7 +835,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _detectionConfidence = now?.confidence ?? 0;
       _currentCalculatedBpm = _displayGate.update(now, DateTime.now());
       final playlist = _playlists[_currentPlaylistIndex];
-      _drift = playlist.items.isEmpty || _freeRunning
+      _drift = playlist.items.isEmpty || _mode == _ScreenMode.freeRunning
           ? null
           : _driftTracker.update(_currentCalculatedBpm,
               playlist.items[_currentSetlistIndex].bpm.toDouble(),
@@ -889,13 +893,13 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         playlistName: playlist.name,
         songs: [for (final song in playlist.items) song.name],
         appVersion: _appVersion?.short);
-    final hasSong = !_freeRunning && playlist.items.isNotEmpty;
+    final hasSong = _mode != _ScreenMode.freeRunning && playlist.items.isNotEmpty;
     return (
       details: details,
       state: BandSyncState(
         sessionId: 0,
         metronomePlaying: _isMetronomePlaying,
-        freeRunning: _freeRunning,
+        freeRunning: _mode == _ScreenMode.freeRunning,
         drift: _drift?.level,
         rushing: _drift?.isRushing ?? false,
         songIndex: hasSong ? _currentSetlistIndex : null,
@@ -1574,11 +1578,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   /// headroom on top for the tempo readout. Returns (minY, maxY, step).
   /// The current song's BPM, or null with an empty playlist.
   /// The range the detector currently favours (shaded on the graph).
-  RangeValues get _bandRange => _freeRunning ? _commonTempoRange : _preferredRange;
+  RangeValues get _bandRange => _mode == _ScreenMode.freeRunning ? _commonTempoRange : _preferredRange;
 
   double? get _currentTargetBpm {
     final playlist = _playlists[_currentPlaylistIndex];
-    if (playlist.items.isEmpty || _freeRunning) return null;
+    if (playlist.items.isEmpty || _mode == _ScreenMode.freeRunning) return null;
     return playlist.items[_currentSetlistIndex].bpm.toDouble();
   }
 
@@ -1915,14 +1919,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             icon: Image.asset('assets/branding/splash.png', height: 40),
           ),
         ),
-        title: Text(_freeRunning ? 'Free running' : playlist.name,
+        title: Text(_mode == _ScreenMode.freeRunning ? 'Free running' : playlist.name,
             overflow: TextOverflow.ellipsis),
         actions: [
           _buildBandMenu(),
           IconButton(
-            tooltip: _freeRunning ? 'Back to setlist' : 'Free-running mode',
-            icon: Icon(_freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
-            onPressed: () => _setFreeRunning(!_freeRunning),
+            tooltip: _mode == _ScreenMode.freeRunning ? 'Back to setlist' : 'Free-running mode',
+            icon: Icon(_mode == _ScreenMode.freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
+            onPressed: () => _setFreeRunning(_mode != _ScreenMode.freeRunning),
           ),
           IconButton(
             icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),
@@ -1942,7 +1946,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       // this also keeps clear of the camera cut-out).
       body: SafeArea(
         top: false,
-        child: _freeRunning
+        child: _mode == _ScreenMode.freeRunning
             // Free-running: just the graph, full screen, either orientation.
             ? _buildGraphSection(context)
             : MediaQuery.orientationOf(context) == Orientation.landscape
@@ -1982,7 +1986,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         children: [
           // The preferred-range slider is for setlist mode; free-running
           // uses the common-tempo range.
-          if (!_freeRunning)
+          if (_mode != _ScreenMode.freeRunning)
             Row(
               children: [
                 Text(
