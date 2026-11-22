@@ -22,6 +22,7 @@ import 'band_sync_icon.dart';
 import 'band_sync_icon_view.dart';
 import 'band_sync_protocol.dart';
 import 'band_sync_screen.dart';
+import 'listening_window.dart';
 import 'playlist.dart';
 import 'playlist_text.dart';
 import 'show_draft.dart';
@@ -146,6 +147,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   static const double _rangeLimitMin = 40;
   static const double _rangeLimitMax = 220;
   RangeValues _preferredRange = const RangeValues(90, 160);
+  ListeningWindow _listeningWindow = ListeningWindow.normal;
 
   // Band sync: this phone can broadcast its song and tempo to bandmates.
   late final BandSyncLeader _bandLeader = BandSyncLeader(_bandSyncSnapshot);
@@ -217,12 +219,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (savedHistory != null && _historyMinuteOptions.contains(savedHistory)) {
       _historyMinutes = savedHistory;
     }
-    if (savedMin != null && savedMax != null) {
-      _setPreferredRange(RangeValues(
-        savedMin.clamp(_rangeLimitMin, _rangeLimitMax),
-        savedMax.clamp(_rangeLimitMin, _rangeLimitMax),
-      ));
-    }
+    // The listening window replaced the min/max slider: carry the old
+    // width over to the nearest preset.
+    final savedWindow = prefs.getString('listeningWindow');
+    _listeningWindow = ListeningWindow.values
+            .where((w) => w.name == savedWindow)
+            .firstOrNull ??
+        (savedMin != null && savedMax != null
+            ? ListeningWindow.fromRange(savedMin, savedMax)
+            : ListeningWindow.normal);
     
     final saved = decodePlaylists(playlistsJson);
     if (saved != null) {
@@ -275,33 +280,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     await prefs.setString('playlists', encodePlaylists(_playlists));
   }
 
-  /// Slide the preferred range so it is centred (on a log scale, i.e. by
-  /// ratio) on [targetBpm], keeping the width the user chose. 90–160 is
-  /// centred on 120; for an 80 BPM song the same width gives 60–105.
-  /// Doesn't call setState — callers rebuild.
+  /// Centre the preferred range on [targetBpm] (on a log scale, i.e. by
+  /// ratio) using the chosen listening window. Doesn't call setState —
+  /// callers rebuild.
   void _centerPreferredRangeOn(double targetBpm) {
-    const step = 5.0;
-    double snap(double v) => (v / step).round() * step;
-    final ratio = math.max(_preferredRange.end / _preferredRange.start, 1.1);
-    final halfRatio = math.sqrt(ratio);
-    var lo = snap(targetBpm / halfRatio);
-    var hi = snap(targetBpm * halfRatio);
-    // Keep within the slider's limits, preserving the width where possible.
-    if (lo < _rangeLimitMin) {
-      lo = _rangeLimitMin;
-      hi = math.min(_rangeLimitMax, snap(lo * ratio));
-    } else if (hi > _rangeLimitMax) {
-      hi = _rangeLimitMax;
-      lo = math.max(_rangeLimitMin, snap(hi / ratio));
-    }
-    if (hi - lo < 10) hi = math.min(_rangeLimitMax, lo + 10);
+    final (lo, hi) = _listeningWindow.rangeAround(targetBpm,
+        limitMin: _rangeLimitMin, limitMax: _rangeLimitMax);
     _preferredRange = RangeValues(lo, hi);
     _tempoDetector.setPreferredRange(lo, hi);
-  }
-
-  void _setPreferredRange(RangeValues values) {
-    setState(() => _preferredRange = values);
-    _tempoDetector.setPreferredRange(values.start, values.end);
   }
 
   /// Expire readings older than the history window (one entry per second).
@@ -463,10 +449,64 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
-  Future<void> _savePreferredRange() async {
+  Future<void> _saveListeningWindow() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('preferredMinBpm', _preferredRange.start);
-    await prefs.setDouble('preferredMaxBpm', _preferredRange.end);
+    await prefs.setString('listeningWindow', _listeningWindow.name);
+  }
+
+  /// Choose how wide a window around each song's BPM the detector favours.
+  void _showListeningWindowSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Listening window',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<ListeningWindow>(
+                    showSelectedIcon: false,
+                    segments: [
+                      for (final w in ListeningWindow.values)
+                        ButtonSegment(
+                            value: w, label: Text('${w.label} ${w.percent}')),
+                    ],
+                    selected: {_listeningWindow},
+                    onSelectionChanged: (s) {
+                      setSheet(() => _listeningWindow = s.first);
+                      setState(() {
+                        final playlist = _playlists[_currentPlaylistIndex];
+                        if (_mode == _ScreenMode.setlist &&
+                            playlist.items.isNotEmpty) {
+                          _centerPreferredRangeOn(
+                              playlist.items[_currentSetlistIndex].bpm.toDouble());
+                        }
+                      });
+                      _saveListeningWindow();
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'How far either side of the song\'s BPM the listener looks '
+                  '(shaded on the graph). Tight resists octave mistakes; '
+                  'wide keeps tracking a band that rushes or drags a lot.',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _setupMetronome() {
@@ -1734,6 +1774,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               },
             ),
             ListTile(
+              leading: const Icon(Icons.track_changes),
+              title: const Text('Listening window'),
+              subtitle: Text(
+                  '${_listeningWindow.label} ${_listeningWindow.percent} around each song'),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _showListeningWindowSettings();
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.tune),
               title: const Text('Tempo readout'),
               subtitle: const Text('Thresholds, hysteresis, hold'),
@@ -2293,33 +2343,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                   label: Text(_freeTapBpm == null
                       ? 'Tap'
                       : 'Tap ${_freeTapBpm!.round()}'),
-                ),
-              ],
-            ),
-          if (_mode == _ScreenMode.setlist)
-            Row(
-              children: [
-                Text(
-                  'Range ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                ),
-                Expanded(
-                  child: RangeSlider(
-                    values: _preferredRange,
-                    min: _rangeLimitMin,
-                    max: _rangeLimitMax,
-                    divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
-                    labels: RangeLabels(
-                      '${_preferredRange.start.round()}',
-                      '${_preferredRange.end.round()}',
-                    ),
-                    onChanged: (v) {
-                      // Keep at least 10 BPM between handles.
-                      if (v.end - v.start < 10) return;
-                      _setPreferredRange(v);
-                    },
-                    onChangeEnd: (_) => _savePreferredRange(),
-                  ),
                 ),
               ],
             ),
