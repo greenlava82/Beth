@@ -1803,37 +1803,61 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     child: Text('Playlists',
                         style: TextStyle(color: Colors.white, fontSize: 22)),
                   ),
-                  IconButton(
-                    tooltip: 'New playlist',
-                    color: Colors.white,
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      Navigator.pop(context); // close drawer
-                      _showAddPlaylistDialog();
-                    },
-                  ),
-                  IconButton(
-                    tooltip: 'Import playlist',
-                    color: Colors.white,
-                    icon: const Icon(Icons.content_paste),
-                    onPressed: () {
-                      Navigator.pop(context); // close drawer
-                      _showImportDialog();
-                    },
-                  ),
-                  IconButton(
-                    tooltip: _mode == _ScreenMode.show
-                        ? 'Done building show'
-                        : 'Build a show',
-                    color: Colors.white,
-                    icon: Icon(_mode == _ScreenMode.show
-                        ? Icons.check
-                        : Icons.playlist_add),
-                    onPressed: () {
-                      Navigator.pop(context); // close drawer
-                      _setShowMode(_mode != _ScreenMode.show);
-                    },
-                  ),
+                  // While building a show this is the Done button; otherwise
+                  // one + menu with the three ways to add a playlist.
+                  if (_mode == _ScreenMode.show)
+                    IconButton(
+                      tooltip: 'Done building show',
+                      color: Colors.white,
+                      icon: const Icon(Icons.check),
+                      onPressed: () {
+                        Navigator.pop(context); // close drawer
+                        _setShowMode(false);
+                      },
+                    )
+                  else
+                    PopupMenuButton<String>(
+                      tooltip: 'Add a playlist',
+                      icon: const Icon(Icons.add, color: Colors.white),
+                      onSelected: (action) {
+                        Navigator.pop(context); // close drawer
+                        switch (action) {
+                          case 'new':
+                            _showAddPlaylistDialog();
+                          case 'import':
+                            _showImportDialog();
+                          case 'show':
+                            _setShowMode(true);
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: 'new',
+                          child: ListTile(
+                            leading: Icon(Icons.playlist_add),
+                            title: Text('New playlist'),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'show',
+                          child: ListTile(
+                            leading: Icon(Icons.auto_fix_high),
+                            title: Text('Build a show'),
+                            subtitle: Text('Tap or play tempos to build one'),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'import',
+                          child: ListTile(
+                            leading: Icon(Icons.download),
+                            title: Text('Import…'),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
