@@ -134,6 +134,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   ShowDraft _showDraft = ShowDraft();
   // Half/double-time scale for the free-running readout.
   ShowScale _freeScale = ShowScale.normal;
+  // BPM last tapped in free-running mode: the detector listens in its octave
+  // and the readout folds into it (like the working BPM in show mode).
+  double? _freeTapBpm;
   // The playlist the show is being built into (null outside the mode).
   Playlist? _showPlaylist;
   final TapTempo _tapTempo = TapTempo();
@@ -653,6 +656,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     setState(() {
       _mode = on ? _ScreenMode.freeRunning : _ScreenMode.setlist;
       _freeScale = ShowScale.normal;
+      _freeTapBpm = null;
+      _tapTempo.reset();
       _driftTracker.reset();
       _drift = null;
       if (on) {
@@ -711,6 +716,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     _tapTempo.reset();
     _isMetronomePlaying = false;
     _currentSetlistIndex = 0;
+  }
+
+  /// Free-running tap tempo: the tapped BPM becomes the octave anchor.
+  void _freeTap() {
+    final bpm = _tapTempo.tap(_tapClock.elapsed);
+    if (bpm == null) return;
+    setState(() {
+      _freeTapBpm = ShowDraft.clampBpm(bpm).toDouble();
+      _tempoDetector.expectedBpm = _freeTapBpm;
+    });
   }
 
   /// Point the detector at the working BPM so it listens in the octave the
@@ -1996,7 +2011,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     };
     final shownBpm = _mode == _ScreenMode.show
         ? _showDraft.shown(_currentCalculatedBpm)
-        : _currentCalculatedBpm * scale.factor;
+        : _mode == _ScreenMode.freeRunning && _freeTapBpm != null
+            ? ShowDraft.foldToAnchor(
+                _currentCalculatedBpm * scale.factor, _freeTapBpm!)
+            : _currentCalculatedBpm * scale.factor;
     final parts = shownBpm.toStringAsFixed(1).split('.');
     const shadow = [Shadow(blurRadius: 12, color: Colors.black)];
     return Center(
@@ -2257,9 +2275,26 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           // The preferred-range slider is for setlist mode; free-running
           // uses the common-tempo range.
           if (_mode == _ScreenMode.freeRunning)
-            Center(
-              child: _buildScaleSelector(_freeScale,
-                  (picked) => _freeScale = ShowScale.select(_freeScale, picked)),
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                _buildScaleSelector(_freeScale, (picked) {
+                  // Like show mode, choosing a scale drops the tap anchor.
+                  _freeScale = ShowScale.select(_freeScale, picked);
+                  _freeTapBpm = null;
+                  _tempoDetector.expectedBpm = _commonTempoBpm;
+                }),
+                OutlinedButton.icon(
+                  onPressed: _freeTap,
+                  icon: const Icon(Icons.touch_app),
+                  label: Text(_freeTapBpm == null
+                      ? 'Tap'
+                      : 'Tap ${_freeTapBpm!.round()}'),
+                ),
+              ],
             ),
           if (_mode == _ScreenMode.setlist)
             Row(

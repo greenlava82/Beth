@@ -76,6 +76,9 @@ class ShowDraft {
 
   static int _clamp(num v) => v.round().clamp(minBpm, maxBpm);
 
+  /// [bpm] rounded and limited to [minBpm]..[maxBpm].
+  static int clampBpm(num bpm) => _clamp(bpm);
+
   /// Folds [bpm] by powers of two to the octave nearest [anchor].
   static double foldToAnchor(double bpm, double anchor) {
     if (bpm <= 0 || anchor <= 0) return bpm;
