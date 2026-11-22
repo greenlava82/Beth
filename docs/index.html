@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beth — a setlist metronome that listens</title>
+<meta name="description" content="Beth counts your band in at each song's tempo, then listens through the microphone and shows the tempo you're actually playing, live.">
+<meta name="theme-color" content="#1E1846">
+<meta property="og:title" content="Beth — a setlist metronome that listens">
+<meta property="og:description" content="A setlist-driven visual metronome for live musicians that detects your band's tempo in real time.">
+<meta property="og:image" content="https://greenlava82.github.io/Beth/screenshots/live-tempo.png">
+<link rel="icon" href="assets/icon.png">
+<style>
+  :root {
+    --bg: #121018;
+    --bg-2: #1e1846;
+    --surface: #1d1b23;
+    --surface-2: #26232e;
+    --text: #e6e1ea;
+    --muted: #b0a9bd;
+    --lavender: #cfbcff;
+    --amber: #ffd180;
+    --green: #69f0ae;
+    --red: #ff6b6b;
+    --line: #35323f;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #fbf8ff;
+      --bg-2: #e9e0ff;
+      --surface: #ffffff;
+      --surface-2: #f1ecfa;
+      --text: #1c1b22;
+      --muted: #5e5870;
+      --lavender: #5a3fc0;
+      --amber: #8a5a00;
+      --green: #0c7a45;
+      --red: #b3261e;
+      --line: #ddd5ee;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--lavender); }
+  .wrap { width: min(1080px, 100% - 32px); margin-inline: auto; }
+  header.nav {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+  .brand img { width: 30px; height: 30px; border-radius: 8px; }
+  .nav nav { margin-left: auto; display: flex; gap: 20px; font-size: .95rem; }
+  .nav nav a { color: var(--muted); text-decoration: none; }
+  .nav nav a:hover { color: var(--text); }
+  @media (max-width: 640px) { .nav nav a:not(.gh) { display: none; } }
+
+  .hero {
+    background: radial-gradient(1200px 500px at 70% -10%, var(--bg-2), transparent 70%);
+    padding: 64px 0 40px;
+  }
+  .hero .wrap { display: grid; grid-template-columns: 1.1fr .9fr; gap: 48px; align-items: center; }
+  @media (max-width: 820px) { .hero .wrap { grid-template-columns: 1fr; text-align: center; } .hero .cta { justify-content: center; } }
+  .hero img.icon { width: 88px; height: 88px; border-radius: 22px; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+  h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1.1; margin: 20px 0 16px; letter-spacing: -.02em; }
+  h1 span { color: var(--lavender); }
+  .lede { font-size: 1.2rem; color: var(--muted); max-width: 34em; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 999px;
+    font-weight: 600; text-decoration: none; border: 1px solid var(--lavender);
+  }
+  .btn.primary { background: var(--lavender); color: #1e1846; }
+  .btn.ghost { color: var(--lavender); }
+  .hero .shots { display: flex; justify-content: center; gap: 0; }
+  .phone {
+    border-radius: 28px; border: 6px solid #0b0a10; background: #0b0a10;
+    box-shadow: 0 18px 50px rgba(0,0,0,.45); display: block; width: 100%; height: auto;
+  }
+  .hero .shots figure { margin: 0; width: min(46%, 230px); }
+  .hero .shots figure:first-child { transform: translateY(18px) rotate(-3deg); z-index: 1; }
+  .hero .shots figure:last-child { transform: translateY(-8px) rotate(3deg); margin-left: -14px; }
+
+  section { padding: 64px 0; }
+  section.alt { background: var(--surface); border-block: 1px solid var(--line); }
+  h2 { font-size: clamp(1.6rem, 3.5vw, 2.2rem); margin: 0 0 8px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 36px; max-width: 40em; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: var(--surface-2); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
+  section.alt .card { background: var(--bg); }
+  .card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--muted); font-size: .98rem; }
+  .card .tag { font-size: 1.6rem; display: block; margin-bottom: 8px; }
+
+  .split { display: grid; grid-template-columns: 240px 1fr; gap: 40px; align-items: center; margin-bottom: 56px; }
+  .split.flip { grid-template-columns: 1fr 240px; }
+  .split.flip figure { order: 2; }
+  .split figure { margin: 0; }
+  .split h3 { font-size: 1.4rem; margin: 0 0 10px; }
+  .split p, .split li { color: var(--muted); }
+  .split ul { padding-left: 1.1em; margin: 12px 0 0; }
+  .split li { margin: 4px 0; }
+  @media (max-width: 720px) {
+    .split, .split.flip { grid-template-columns: 1fr; gap: 20px; }
+    .split figure, .split.flip figure { order: 0; max-width: 240px; margin-inline: auto; }
+  }
+  .on { color: var(--green); font-weight: 600; }
+  .warn { color: var(--amber); font-weight: 600; }
+  .off { color: var(--red); font-weight: 600; }
+
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 24px; }
+  .gallery figure { margin: 0; text-align: center; }
+  .gallery figcaption { margin-top: 10px; font-size: .9rem; color: var(--muted); }
+  .landscape { margin: 48px auto 0; max-width: 820px; }
+  .landscape img { border-radius: 22px; border: 6px solid #0b0a10; width: 100%; height: auto; display: block; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+  .landscape figcaption { text-align: center; margin-top: 10px; color: var(--muted); font-size: .9rem; }
+
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+  ol.steps li { counter-increment: s; display: grid; grid-template-columns: 44px 1fr; gap: 14px; align-items: start; }
+  ol.steps li::before {
+    content: counter(s); width: 44px; height: 44px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 700; color: #1e1846; background: var(--lavender);
+  }
+  ol.steps strong { display: block; }
+  ol.steps span { color: var(--muted); }
+
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .9em; }
+  pre { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; overflow-x: auto; }
+  :not(pre) > code { background: var(--surface-2); padding: 2px 6px; border-radius: 6px; }
+
+  footer { padding: 40px 0 56px; color: var(--muted); font-size: .95rem; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 28px; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/icon.png" alt="">Beth</a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#screens">Screenshots</a>
+      <a href="#how">How it works</a>
+      <a href="#band">Band sync</a>
+      <a href="#get" >Get it</a>
+      <a class="gh" href="https://github.com/greenlava82/Beth">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <img class="icon" src="assets/icon.png" alt="Beth app icon">
+        <h1>A setlist metronome <span>that listens.</span></h1>
+        <p class="lede">Beth counts your band in at each song's tempo, then listens through the microphone and shows the tempo you're <em>actually</em> playing — live, for drum kits, finger snaps, solo piano, strummed guitar or a lone bass line.</p>
+        <div class="cta">
+          <a class="btn primary" href="#get">Get Beth</a>
+          <a class="btn ghost" href="https://github.com/greenlava82/Beth">View on GitHub</a>
+        </div>
+      </div>
+      <div class="shots">
+        <figure><img class="phone" src="screenshots/live-tempo.png" alt="Beth on tempo: 117.8 BPM in green over a history graph, with the metronome at 118"></figure>
+        <figure><img class="phone" src="screenshots/drift-warning.png" alt="Beth warning the band is rushing: 121.1 BPM in amber, plus 3.1"></figure>
+      </div>
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>Built for the stage</h2>
+      <p class="sub">Big numbers, one hand, a dark screen that stays on. Everything you need between songs, nothing you don't.</p>
+      <div class="grid">
+        <div class="card"><span class="tag">🎙️</span><h3>Live tempo detection</h3><p>Hears the band through the mic and shows the tempo to a tenth of a BPM — only when there's a beat worth trusting.</p></div>
+        <div class="card"><span class="tag">🚦</span><h3>Rushing &amp; dragging alerts</h3><p>The number goes green, amber or red against the song's tempo, with ▲ rushing / ▼ dragging and how far off you are.</p></div>
+        <div class="card"><span class="tag">📈</span><h3>Tempo history graph</h3><p>See whether you drift over the course of a song, against a dashed target line at the song's BPM.</p></div>
+        <div class="card"><span class="tag">📋</span><h3>Setlists</h3><p>A BPM and optional length per song. Jump to any song, see what's next, edit, reorder, share as text or back up to Drive.</p></div>
+        <div class="card"><span class="tag">⏱️</span><h3>Smart count-in</h3><p>The metronome starts with each song, then steps aside by itself once the band locks onto the tempo.</p></div>
+        <div class="card"><span class="tag">🎯</span><h3>Nudge or capture</h3><p>Fix a song's BPM on the spot: ±1, ±5, or capture the tempo you're hearing with one tap.</p></div>
+        <div class="card"><span class="tag">🧪</span><h3>Free-running mode</h3><p>No setlist, no target — a full-screen tempo graph with ½x / 1x / 2x and tap tempo for jams and rehearsal.</p></div>
+        <div class="card"><span class="tag">🪄</span><h3>Show building</h3><p>Sketch a whole show at rehearsal: capture or tap each tempo, number it (1, 2a, 3b) and commit it to a new setlist.</p></div>
+        <div class="card"><span class="tag">🦶</span><h3>MIDI foot switch</h3><p>Any MIDI note or CC advances to the next song, hands-free.</p></div>
+        <div class="card"><span class="tag">📡</span><h3>Band sync</h3><p>One phone listens; bandmates' phones and a cheap ESP32 display mirror song, target and heard tempo over Bluetooth. No Wi-Fi, no pairing.</p></div>
+        <div class="card"><span class="tag">🔄</span><h3>Landscape layout</h3><p>Graph on the left, controls on the right — whichever way your phone sits on the stand.</p></div>
+        <div class="card"><span class="tag">🔒</span><h3>Local &amp; private</h3><p>Audio is analysed on the device as it plays. There are no accounts and no cloud; setlists are stored on the phone.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screens" class="alt">
+    <div class="wrap">
+      <h2>A closer look</h2>
+      <p class="sub">Dark, high-contrast, and readable at arm's length.</p>
+
+      <div class="split">
+        <figure><img class="phone" src="screenshots/live-tempo.png" alt="Beth showing 117.8 BPM on tempo"></figure>
+        <div>
+          <h3>Know where the band is</h3>
+          <p>The big number is the tempo being heard right now. Its colour tells you how it compares with the song:</p>
+          <ul>
+            <li><span class="on">Green</span> — on tempo, within 2%.</li>
+            <li><span class="warn">Amber</span> — drifting, 2–5% away.</li>
+            <li><span class="off">Red</span> — off by more than 5%.</li>
+          </ul>
+          <p style="margin-top:14px">Below it, the metronome circle, nudge buttons, <strong>Capture</strong>, and the current and next songs.</p>
+        </div>
+      </div>
+
+      <div class="split flip">
+        <figure><img class="phone" src="screenshots/drift-warning.png" alt="Beth warning the band is rushing at 121.1 BPM"></figure>
+        <div>
+          <h3>Catch rushing before the audience does</h3>
+          <p>Here the band is pushing 3 BPM over a song set at 118. The readout turns amber and says <strong>▲ +3.1 rushing</strong>; the graph shows exactly when the tempo started to climb.</p>
+        </div>
+      </div>
+
+      <div class="split">
+        <figure><img class="phone" src="screenshots/setlist.png" alt="The setlist sheet showing five songs with tempos and lengths"></figure>
+        <div>
+          <h3>Your whole set, one tap away</h3>
+          <p>Tap the song info to see the full setlist with its running time, and jump to any song. Moving on starts the count-in metronome at the new song's tempo.</p>
+        </div>
+      </div>
+
+      <div class="gallery">
+        <figure><img class="phone" src="screenshots/edit-setlist.png" alt="Editing a setlist"><figcaption>Edit and reorder songs</figcaption></figure>
+        <figure><img class="phone" src="screenshots/free-running.png" alt="Free-running mode"><figcaption>Free-running mode</figcaption></figure>
+        <figure><img class="phone" src="screenshots/build-a-show.png" alt="Show building mode"><figcaption>Show building mode</figcaption></figure>
+        <figure><img class="phone" src="screenshots/band-sync.png" alt="Band sync menu"><figcaption>Band sync menu</figcaption></figure>
+        <figure><img class="phone" src="screenshots/menu.png" alt="Playlist menu with Free run"><figcaption>Switch playlist or free-run</figcaption></figure>
+        <figure><img class="phone" src="screenshots/settings.png" alt="Settings sheet"><figcaption>Settings</figcaption></figure>
+      </div>
+
+      <figure class="landscape">
+        <img src="screenshots/landscape.png" alt="Beth in landscape: graph on the left, metronome and setlist on the right">
+        <figcaption>Landscape: graph on the left, controls on the right</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="sub">Beth finds the beat from the sound of the music itself — not just drum hits — so it works for sparse and melodic playing too. Everything runs on the device.</p>
+      <ol class="steps">
+        <li><div><strong>Onsets</strong><span>A short-time FFT (46&nbsp;ms window, 10&nbsp;ms hop) is split into ~50 log-spaced bands from 30&nbsp;Hz to 16&nbsp;kHz. The onset signal is the rise in each band, so it reacts to <em>new</em> sound: drum hits and snaps, but also piano, guitar and bass notes changing pitch.</span></div></li>
+        <li><div><strong>Periodicity</strong><span>The autocorrelation of the last 8&nbsp;s of onsets is scored for every tempo from 40 to 220&nbsp;BPM with a harmonic comb — the beat should repeat at 1×, 2×, 3× and 4× its period.</span></div></li>
+        <li><div><strong>Half or double?</strong><span>The listening window and the song's BPM decide between readings like 70 and 140, which the audio alone can't settle.</span></div></li>
+        <li><div><strong>Smoothing</strong><span>Scores are blended over time so the number is steady but still follows real tempo changes.</span></div></li>
+      </ol>
+      <p class="sub" style="margin-top:28px">Tips: put the phone where it hears the whole band, give it a few seconds, and expect free-time (rubato) playing to read as <em>Listening…</em> — there's no steady pulse to find.</p>
+    </div>
+  </section>
+
+  <section id="band" class="alt">
+    <div class="wrap">
+      <h2>Band sync</h2>
+      <p class="sub">One phone — the <strong>leader</strong> — listens and shares what it hears. Everyone else <strong>follows</strong> and sees the same song, target, tempo and drift colour. It uses Bluetooth LE: no Wi-Fi, no pairing, any number of followers.</p>
+      <div class="grid">
+        <div class="card"><h3>Session icons</h3><p>Each band gets one of 96 icons (16 shapes × 6 colours) with a sayable name — "follow the orange anchor" — so nobody joins the wrong leader by mistake.</p></div>
+        <div class="card"><h3>Never a frozen number</h3><p>Followers show an amber banner after 4 s of silence and a red <em>Lost the leader</em> banner after 12 s.</p></div>
+        <div class="card"><h3>A display for the drum riser</h3><p>A follower doesn't have to be a phone. The <a href="https://github.com/greenlava82/Beth/tree/main/firmware/cyd-follower">ESP32 follower firmware</a> turns a cheap 2.8″ "Cheap Yellow Display" into a USB-powered tempo screen with song names.</p></div>
+      </div>
+      <p class="sub" style="margin-top:24px">Keep the leader's app on screen — phones stop broadcasting in the background. Range is a typical stage, about 10&nbsp;m.</p>
+    </div>
+  </section>
+
+  <section id="setlists">
+    <div class="wrap">
+      <h2>Setlists you can share as text</h2>
+      <p class="sub">Share sends a readable list your bandmates can use as-is. Import accepts almost any style of list — <code>Superstition - 100</code>, <code>1. Valerie, 118 bpm</code>, <code>120 Song name</code>.</p>
+<pre># Beth setlist: Friday Gig
+Valerie, 118, 3:52
+Superstition, 96, 4:26
+Uptown Funk, 115, 4:30
+September, 126, 3:35
+Higher Ground, 132, 3:40</pre>
+      <p class="sub">Back everything up to one file and restore it on a new phone — to Downloads, Google Drive, or iCloud Drive via Files.</p>
+    </div>
+  </section>
+
+  <section id="get" class="alt">
+    <div class="wrap">
+      <h2>Get Beth</h2>
+      <p class="sub">Beth is open source (MIT) and built with Flutter. Android is the primary, tested platform; iOS and macOS builds are scaffolded but not fully tested. There's no store listing yet, so build it and sideload it:</p>
+<pre>git clone https://github.com/greenlava82/Beth.git
+cd Beth
+flutter pub get
+tool/flutter_versioned.sh build apk --release
+adb install -r build/app/outputs/flutter-apk/app-release.apk</pre>
+      <p class="sub">See the <a href="https://github.com/greenlava82/Beth#development-setup">development setup</a> for requirements, emulator tips and how to run the tests.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/greenlava82/Beth">Source on GitHub</a>
+        <a class="btn ghost" href="https://github.com/greenlava82/Beth#readme">Read the docs</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Dan Tang · <a href="https://github.com/greenlava82/Beth/blob/main/LICENSE">MIT License</a></span>
+    <span><a href="https://github.com/greenlava82/Beth">github.com/greenlava82/Beth</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
