@@ -33,7 +33,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Playlists'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Build a show'));
+    await tester.tap(find.byTooltip('Build a show'));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 5));
     expect(find.text('New show'), findsOneWidget);
     expect(find.text('Song 1'), findsOneWidget);
@@ -65,7 +65,7 @@ void main() {
     // Finishing with nothing committed drops the empty show.
     await tester.tap(find.byTooltip('Playlists'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Done building show'));
+    await tester.tap(find.byTooltip('Done building show'));
     await tester.pumpAndSettle();
     expect(find.text('Default Setlist'), findsOneWidget);
   });
