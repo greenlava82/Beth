@@ -1396,13 +1396,17 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             contentPadding: EdgeInsets.zero,
           ),
         ),
-        CheckedPopupMenuItem(
+        PopupMenuItem(
           value: _toggleLeading,
-          checked: leading,
-          child: Text(leading
-              ? 'Leading as ${_bandLeader.icon.name} (${_bandLeader.code})'
-                  '${_bandLeader.joinedCount > 0 ? ' · ${_bandLeader.joinedCount} joined' : ''}'
-              : 'Lead the band'),
+          child: ListTile(
+            leading: const Icon(Icons.podcasts),
+            title: Text(leading
+                ? 'Leading as ${_bandLeader.icon.name} (${_bandLeader.code})'
+                    '${_bandLeader.joinedCount > 0 ? ' · ${_bandLeader.joinedCount} joined' : ''}'
+                : 'Lead the band'),
+            trailing: leading ? const Icon(Icons.check) : null,
+            contentPadding: EdgeInsets.zero,
+          ),
         ),
         PopupMenuItem(
           value: _chooseBandIcon,
