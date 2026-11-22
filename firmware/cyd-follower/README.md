@@ -14,7 +14,7 @@ It shows:
   running*);
 - the heard tempo, large, in the leader's drift colour (green on tempo, amber
   drifting, red off), with *▲ 4.0 rushing* / *▼ 2.1 dragging* or *on tempo*;
-- detection confidence as a bar;
+- the heard tempo fades when the leader's confidence is low;
 - an orange banner after 4 s with no news and a red *Lost the leader* banner
   after 12 s, so a frozen number never looks live (the number turns grey);
 - the drift colour on the board's RGB LED.

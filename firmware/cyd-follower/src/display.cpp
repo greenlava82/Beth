@@ -31,6 +31,13 @@ bool haveStrip = false;
 constexpr uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
+// [fg] faded toward [bg]; alpha 0..255 (255 = all fg). RGB565 has no alpha.
+uint16_t blend565(uint16_t fg, uint16_t bg, uint8_t alpha) {
+  const int r = (((fg >> 11) & 0x1F) * alpha + ((bg >> 11) & 0x1F) * (255 - alpha)) / 255;
+  const int g = (((fg >> 5) & 0x3F) * alpha + ((bg >> 5) & 0x3F) * (255 - alpha)) / 255;
+  const int b = ((fg & 0x1F) * alpha + (bg & 0x1F) * (255 - alpha)) / 255;
+  return (r << 11) | (g << 5) | b;
+}
 constexpr uint16_t kGreen = rgb(0x30, 0xF0, 0x30);
 constexpr uint16_t kAmber = rgb(0xFF, 0xC1, 0x07);
 constexpr uint16_t kRed = rgb(0xFF, 0x52, 0x52);
@@ -288,8 +295,12 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
 
   // The heard tempo, big, in the leader's drift colour.
   const uint16_t color = live ? driftColor(s.drift) : kGrey;
+  // Low leader confidence fades the number: full from 0.4 (102/255) up, 40%
+  // at 0, as on the app's follower screen. Not when the link is stale.
+  const uint8_t numberAlpha =
+      !live ? 255 : 102 + 153 * min<int>(s.confidence, 102) / 102;
   c.setTextDatum(MC_DATUM);
-  c.setTextColor(color);
+  c.setTextColor(blend565(color, kBg, numberAlpha));
   if (s.hasHeard()) {
     snprintf(buf, sizeof buf, "%u.%u", s.heard10 / 10, s.heard10 % 10);
     c.drawString(buf, kW / 2, 118 + oy, 8);
@@ -321,20 +332,11 @@ void drawMirror(TFT_eSPI& c, const View& v, int oy) {
     }
   }
 
-  // Confidence bar.
-  const int barW = 160;
-  const int barX = (kW - barW) / 2;
-  const uint16_t barColor = !live                 ? kGrey
-                            : s.confidence >= 128 ? kGreen
-                            : s.confidence >= 51  ? kAmber
-                                                  : kRed;
-  c.fillRect(barX, 216 + oy, barW, 5, kDim);
-  c.fillRect(barX, 216 + oy, barW * s.confidence / 255, 5, barColor);
-  c.setTextColor(kGrey);
-  c.drawString(v.otherLeaders > 0
-                   ? "confidence  -  tap the screen to switch leader"
-                   : "confidence",
-               kW / 2, 232 + oy, 1);
+  // Only the switch-leader hint remains of the old confidence caption.
+  if (v.otherLeaders > 0) {
+    c.setTextColor(kGrey);
+    c.drawString("tap the screen to switch leader", kW / 2, 232 + oy, 1);
+  }
 }
 
 void drawAll(TFT_eSPI& c, const View& v, int oy) {
