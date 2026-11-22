@@ -1780,6 +1780,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
   Widget _buildDrawer() {
     return Drawer(
+      // Wider in landscape, where the safe area (camera cut-out) takes some
+      // of the default 304 px and the header would otherwise wrap.
+      width: MediaQuery.orientationOf(context) == Orientation.landscape
+          ? 400
+          : null,
       // Keep the bottom items (e.g. Import Playlist) clear of the system
       // navigation bar; the header still fills in under the status bar.
       child: SafeArea(
