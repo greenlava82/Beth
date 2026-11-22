@@ -187,4 +187,27 @@ void main() {
     expect(ShowDraft.isDuplicate('1', ['1a. Blue Moon']), isFalse);
     expect(ShowDraft.isDuplicate('1', ['1. Intro', '2']), isTrue);
   });
+
+  test('Letter + right after a commit makes a sub-song of it', () {
+    final d = ShowDraft()..setBpm(100);
+    d.commit();
+    expect(d.pendingLabel, '2');
+    d.stepSuffix(1);
+    expect(d.pendingLabel, '1a');
+    d.stepSuffix(1);
+    expect(d.pendingLabel, '1b');
+  });
+
+  test('Letter + after committing 1a gives 1b; manual edits cancel it', () {
+    final d = ShowDraft(pendingLabel: '1a')..setBpm(100);
+    d.commit();
+    d.stepSuffix(1);
+    expect(d.pendingLabel, '1b');
+
+    d.setBpm(100);
+    d.commit();
+    d.stepNumber(1);
+    d.stepSuffix(1);
+    expect(d.pendingLabel, '3a');
+  });
 }
