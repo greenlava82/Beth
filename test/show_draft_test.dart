@@ -262,4 +262,11 @@ void main() {
       expect(d.anchor, isNull);
     });
   });
+
+  test('ShowScale.select replaces, toggles off, never stacks', () {
+    expect(ShowScale.select(ShowScale.normal, ShowScale.half), ShowScale.half);
+    expect(ShowScale.select(ShowScale.half, ShowScale.half), ShowScale.normal);
+    expect(ShowScale.select(ShowScale.half, ShowScale.twice), ShowScale.twice);
+    expect(ShowScale.select(ShowScale.twice, ShowScale.normal), ShowScale.normal);
+  });
 }

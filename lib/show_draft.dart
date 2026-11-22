@@ -14,6 +14,14 @@ enum ShowScale {
 
   const ShowScale(this.factor);
   final double factor;
+
+  /// The scale after [picked] is chosen while [current] is active. Options
+  /// replace each other rather than stack; picking the active non-normal
+  /// option returns to normal.
+  static ShowScale select(ShowScale current, ShowScale picked) =>
+      (picked == current && picked != ShowScale.normal)
+          ? ShowScale.normal
+          : picked;
 }
 
 /// How the pending label advances after a commit.
@@ -113,7 +121,7 @@ class ShowDraft {
   /// since the scale is the user's new octave choice.
   void selectScale(ShowScale s) {
     _anchor = null;
-    _scale = (s == _scale && s != ShowScale.normal) ? ShowScale.normal : s;
+    _scale = ShowScale.select(_scale, s);
   }
 
   /// Sets the label by hand; a parseable value becomes the base for later

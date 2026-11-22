@@ -132,6 +132,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // Show creation mode: listen wide, since any song might come next.
   static const RangeValues _showTempoRange = RangeValues(80, 160);
   ShowDraft _showDraft = ShowDraft();
+  // Half/double-time scale for the free-running readout.
+  ShowScale _freeScale = ShowScale.normal;
   // The playlist the show is being built into (null outside the mode).
   Playlist? _showPlaylist;
   final TapTempo _tapTempo = TapTempo();
@@ -650,6 +652,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     _cancelLockStop();
     setState(() {
       _mode = on ? _ScreenMode.freeRunning : _ScreenMode.setlist;
+      _freeScale = ShowScale.normal;
       _driftTracker.reset();
       _drift = null;
       if (on) {
@@ -1984,11 +1987,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   Widget _buildTempoReadout(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final hasTempo = _currentCalculatedBpm > 0;
-    // In show mode the half/double-time scale applies to what's shown.
-    final scale = _mode == _ScreenMode.show ? _showDraft.scale : ShowScale.normal;
+    // In show and free-running modes the half/double-time scale applies to
+    // what's shown.
+    final scale = switch (_mode) {
+      _ScreenMode.show => _showDraft.scale,
+      _ScreenMode.freeRunning => _freeScale,
+      _ScreenMode.setlist => ShowScale.normal,
+    };
     final shownBpm = _mode == _ScreenMode.show
         ? _showDraft.shown(_currentCalculatedBpm)
-        : _currentCalculatedBpm;
+        : _currentCalculatedBpm * scale.factor;
     final parts = shownBpm.toStringAsFixed(1).split('.');
     const shadow = [Shadow(blurRadius: 12, color: Colors.black)];
     return Center(
@@ -2248,6 +2256,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         children: [
           // The preferred-range slider is for setlist mode; free-running
           // uses the common-tempo range.
+          if (_mode == _ScreenMode.freeRunning)
+            Center(
+              child: _buildScaleSelector(_freeScale,
+                  (picked) => _freeScale = ShowScale.select(_freeScale, picked)),
+            ),
           if (_mode == _ScreenMode.setlist)
             Row(
               children: [
@@ -2483,6 +2496,26 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
+  /// The ½x / 1x / 2x selector shared by show and free-running modes.
+  /// [onPicked] runs inside setState.
+  Widget _buildScaleSelector(
+      ShowScale scale, void Function(ShowScale picked) onPicked) {
+    return SegmentedButton<ShowScale>(
+      showSelectedIcon: false,
+      emptySelectionAllowed: true,
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
+      segments: const [
+        ButtonSegment(value: ShowScale.half, label: Text('½x')),
+        ButtonSegment(value: ShowScale.normal, label: Text('1x')),
+        ButtonSegment(value: ShowScale.twice, label: Text('2x')),
+      ],
+      selected: {scale},
+      // Tapping the active option arrives as an empty selection.
+      onSelectionChanged: (s) =>
+          setState(() => onPicked(s.isEmpty ? scale : s.first)),
+    );
+  }
+
   /// Show creation mode's bottom (portrait) / right (landscape) panel:
   /// working BPM on the metronome circle with nudges, the half/double-time
   /// scale, Capture and Tap, and the song number with Commit.
@@ -2494,22 +2527,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final label = draft.pendingLabel.trim();
     final duplicate = ShowDraft.isDuplicate(label, [for (final s in playlist.items) s.name]);
 
-    final scaleSelector = SegmentedButton<ShowScale>(
-      showSelectedIcon: false,
-      emptySelectionAllowed: true,
-      style: const ButtonStyle(visualDensity: VisualDensity.compact),
-      segments: const [
-        ButtonSegment(value: ShowScale.half, label: Text('½x')),
-        ButtonSegment(value: ShowScale.normal, label: Text('1x')),
-        ButtonSegment(value: ShowScale.twice, label: Text('2x')),
-      ],
-      selected: {draft.scale},
-      // Tapping the active option arrives as an empty selection.
-      onSelectionChanged: (s) => setState(() {
-        draft.selectScale(s.isEmpty ? draft.scale : s.first);
-        _syncShowHint();
-      }),
-    );
+    final scaleSelector = _buildScaleSelector(draft.scale, (picked) {
+      draft.selectScale(picked);
+      _syncShowHint();
+    });
 
     final captureTap = Wrap(
       alignment: WrapAlignment.center,
