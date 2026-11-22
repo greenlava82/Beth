@@ -2451,9 +2451,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       emptySelectionAllowed: true,
       style: const ButtonStyle(visualDensity: VisualDensity.compact),
       segments: const [
-        ButtonSegment(value: ShowScale.half, label: Text('½')),
-        ButtonSegment(value: ShowScale.normal, label: Text('1')),
-        ButtonSegment(value: ShowScale.twice, label: Text('2')),
+        ButtonSegment(value: ShowScale.half, label: Text('½x')),
+        ButtonSegment(value: ShowScale.normal, label: Text('1x')),
+        ButtonSegment(value: ShowScale.twice, label: Text('2x')),
       ],
       selected: {draft.scale},
       // Tapping the active option arrives as an empty selection.
