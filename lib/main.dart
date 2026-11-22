@@ -1872,9 +1872,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     return _minChartWindowSeconds;
   }
 
-  /// BPM axis range fitted to the readings currently on screen, with
-  /// headroom on top for the tempo readout. Returns (minY, maxY, step).
-  /// The current song's BPM, or null with an empty playlist.
   /// The range the detector currently favours (shaded on the graph).
   RangeValues get _bandRange => switch (_mode) {
         _ScreenMode.freeRunning => _commonTempoRange,
@@ -1882,12 +1879,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         _ScreenMode.setlist => _preferredRange,
       };
 
+  /// The current song's BPM, or null with an empty playlist.
   double? get _currentTargetBpm {
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty || _mode != _ScreenMode.setlist) return null;
     return playlist.items[_currentSetlistIndex].bpm.toDouble();
   }
 
+  /// BPM axis range fitted to the readings currently on screen. Returns
+  /// (minY, maxY, step).
   (double, double, double) _chartYRange(double minX) {
     double? lo, hi;
     for (final spot in _bpmHistory) {
@@ -1913,10 +1913,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
     final span = hi - lo;
     final step = span <= 40 ? 10.0 : (span <= 90 ? 20.0 : 40.0);
-    // Bottom padding, then enough headroom that the readings sit in the
-    // lower ~60% of the plot, clear of the overlaid readout.
+    // Half a step of padding at each end; the readout has its own strip
+    // above the plot, so no headroom is needed.
     var minY = ((lo - step / 2) / step).floorToDouble() * step;
-    var maxY = ((hi + (hi - minY) * 0.65) / step).ceilToDouble() * step;
+    var maxY = ((hi + step / 2) / step).ceilToDouble() * step;
     minY = math.max(0, minY);
     maxY = math.min(300, maxY);
     return (minY, maxY, step);
@@ -1947,8 +1947,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       LineChartData(
         gridData: FlGridData(
           show: true,
+          drawVerticalLine: false,
           horizontalInterval: yStep,
-          verticalInterval: labelInterval,
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
@@ -2006,13 +2006,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               color: Colors.white.withAlpha(170),
               strokeWidth: 1.5,
               dashArray: const [6, 4],
-              label: HorizontalLineLabel(
-                show: true,
-                alignment: Alignment.bottomLeft,
-                padding: const EdgeInsets.only(left: 4, bottom: 2),
-                style: TextStyle(color: Colors.grey[300], fontSize: 10),
-                labelResolver: (line) => 'target ${line.y.round()}',
-              ),
             ),
         ]),
         rangeAnnotations: RangeAnnotations(
