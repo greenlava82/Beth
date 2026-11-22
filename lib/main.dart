@@ -22,6 +22,7 @@ import 'band_sync_icon.dart';
 import 'band_sync_icon_view.dart';
 import 'band_sync_protocol.dart';
 import 'band_sync_screen.dart';
+import 'listening_window.dart';
 import 'playlist.dart';
 import 'playlist_text.dart';
 import 'show_draft.dart';
@@ -146,6 +147,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   static const double _rangeLimitMin = 40;
   static const double _rangeLimitMax = 220;
   RangeValues _preferredRange = const RangeValues(90, 160);
+  ListeningWindow _listeningWindow = ListeningWindow.normal;
 
   // Band sync: this phone can broadcast its song and tempo to bandmates.
   late final BandSyncLeader _bandLeader = BandSyncLeader(_bandSyncSnapshot);
@@ -217,12 +219,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (savedHistory != null && _historyMinuteOptions.contains(savedHistory)) {
       _historyMinutes = savedHistory;
     }
-    if (savedMin != null && savedMax != null) {
-      _setPreferredRange(RangeValues(
-        savedMin.clamp(_rangeLimitMin, _rangeLimitMax),
-        savedMax.clamp(_rangeLimitMin, _rangeLimitMax),
-      ));
-    }
+    // The listening window replaced the min/max slider: carry the old
+    // width over to the nearest preset.
+    final savedWindow = prefs.getString('listeningWindow');
+    _listeningWindow = ListeningWindow.values
+            .where((w) => w.name == savedWindow)
+            .firstOrNull ??
+        (savedMin != null && savedMax != null
+            ? ListeningWindow.fromRange(savedMin, savedMax)
+            : ListeningWindow.normal);
     
     final saved = decodePlaylists(playlistsJson);
     if (saved != null) {
@@ -275,33 +280,14 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     await prefs.setString('playlists', encodePlaylists(_playlists));
   }
 
-  /// Slide the preferred range so it is centred (on a log scale, i.e. by
-  /// ratio) on [targetBpm], keeping the width the user chose. 90–160 is
-  /// centred on 120; for an 80 BPM song the same width gives 60–105.
-  /// Doesn't call setState — callers rebuild.
+  /// Centre the preferred range on [targetBpm] (on a log scale, i.e. by
+  /// ratio) using the chosen listening window. Doesn't call setState —
+  /// callers rebuild.
   void _centerPreferredRangeOn(double targetBpm) {
-    const step = 5.0;
-    double snap(double v) => (v / step).round() * step;
-    final ratio = math.max(_preferredRange.end / _preferredRange.start, 1.1);
-    final halfRatio = math.sqrt(ratio);
-    var lo = snap(targetBpm / halfRatio);
-    var hi = snap(targetBpm * halfRatio);
-    // Keep within the slider's limits, preserving the width where possible.
-    if (lo < _rangeLimitMin) {
-      lo = _rangeLimitMin;
-      hi = math.min(_rangeLimitMax, snap(lo * ratio));
-    } else if (hi > _rangeLimitMax) {
-      hi = _rangeLimitMax;
-      lo = math.max(_rangeLimitMin, snap(hi / ratio));
-    }
-    if (hi - lo < 10) hi = math.min(_rangeLimitMax, lo + 10);
+    final (lo, hi) = _listeningWindow.rangeAround(targetBpm,
+        limitMin: _rangeLimitMin, limitMax: _rangeLimitMax);
     _preferredRange = RangeValues(lo, hi);
     _tempoDetector.setPreferredRange(lo, hi);
-  }
-
-  void _setPreferredRange(RangeValues values) {
-    setState(() => _preferredRange = values);
-    _tempoDetector.setPreferredRange(values.start, values.end);
   }
 
   /// Expire readings older than the history window (one entry per second).
@@ -463,10 +449,64 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     );
   }
 
-  Future<void> _savePreferredRange() async {
+  Future<void> _saveListeningWindow() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('preferredMinBpm', _preferredRange.start);
-    await prefs.setDouble('preferredMaxBpm', _preferredRange.end);
+    await prefs.setString('listeningWindow', _listeningWindow.name);
+  }
+
+  /// Choose how wide a window around each song's BPM the detector favours.
+  void _showListeningWindowSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Listening window',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<ListeningWindow>(
+                    showSelectedIcon: false,
+                    segments: [
+                      for (final w in ListeningWindow.values)
+                        ButtonSegment(
+                            value: w, label: Text('${w.label} ${w.percent}')),
+                    ],
+                    selected: {_listeningWindow},
+                    onSelectionChanged: (s) {
+                      setSheet(() => _listeningWindow = s.first);
+                      setState(() {
+                        final playlist = _playlists[_currentPlaylistIndex];
+                        if (_mode == _ScreenMode.setlist &&
+                            playlist.items.isNotEmpty) {
+                          _centerPreferredRangeOn(
+                              playlist.items[_currentSetlistIndex].bpm.toDouble());
+                        }
+                      });
+                      _saveListeningWindow();
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'How far either side of the song\'s BPM the listener looks '
+                  '(shaded on the graph). Tight resists octave mistakes; '
+                  'wide keeps tracking a band that rushes or drags a lot.',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _setupMetronome() {
@@ -1734,6 +1774,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               },
             ),
             ListTile(
+              leading: const Icon(Icons.track_changes),
+              title: const Text('Listening window'),
+              subtitle: Text(
+                  '${_listeningWindow.label} ${_listeningWindow.percent} around each song'),
+              onTap: () {
+                Navigator.pop(context); // close drawer
+                _showListeningWindowSettings();
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.tune),
               title: const Text('Tempo readout'),
               subtitle: const Text('Thresholds, hysteresis, hold'),
@@ -1822,9 +1872,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     return _minChartWindowSeconds;
   }
 
-  /// BPM axis range fitted to the readings currently on screen, with
-  /// headroom on top for the tempo readout. Returns (minY, maxY, step).
-  /// The current song's BPM, or null with an empty playlist.
   /// The range the detector currently favours (shaded on the graph).
   RangeValues get _bandRange => switch (_mode) {
         _ScreenMode.freeRunning => _commonTempoRange,
@@ -1832,12 +1879,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         _ScreenMode.setlist => _preferredRange,
       };
 
+  /// The current song's BPM, or null with an empty playlist.
   double? get _currentTargetBpm {
     final playlist = _playlists[_currentPlaylistIndex];
     if (playlist.items.isEmpty || _mode != _ScreenMode.setlist) return null;
     return playlist.items[_currentSetlistIndex].bpm.toDouble();
   }
 
+  /// BPM axis range fitted to the readings currently on screen. Returns
+  /// (minY, maxY, step).
   (double, double, double) _chartYRange(double minX) {
     double? lo, hi;
     for (final spot in _bpmHistory) {
@@ -1863,10 +1913,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     }
     final span = hi - lo;
     final step = span <= 40 ? 10.0 : (span <= 90 ? 20.0 : 40.0);
-    // Bottom padding, then enough headroom that the readings sit in the
-    // lower ~60% of the plot, clear of the overlaid readout.
+    // Half a step of padding at each end; the readout has its own strip
+    // above the plot, so no headroom is needed.
     var minY = ((lo - step / 2) / step).floorToDouble() * step;
-    var maxY = ((hi + (hi - minY) * 0.65) / step).ceilToDouble() * step;
+    var maxY = ((hi + step / 2) / step).ceilToDouble() * step;
     minY = math.max(0, minY);
     maxY = math.min(300, maxY);
     return (minY, maxY, step);
@@ -1897,8 +1947,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       LineChartData(
         gridData: FlGridData(
           show: true,
+          drawVerticalLine: false,
           horizontalInterval: yStep,
-          verticalInterval: labelInterval,
         ),
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
@@ -1956,13 +2006,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               color: Colors.white.withAlpha(170),
               strokeWidth: 1.5,
               dashArray: const [6, 4],
-              label: HorizontalLineLabel(
-                show: true,
-                alignment: Alignment.bottomLeft,
-                padding: const EdgeInsets.only(left: 4, bottom: 2),
-                style: TextStyle(color: Colors.grey[300], fontSize: 10),
-                labelResolver: (line) => 'target ${line.y.round()}',
-              ),
             ),
         ]),
         rangeAnnotations: RangeAnnotations(
@@ -2016,64 +2059,68 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 _currentCalculatedBpm * scale.factor, _freeTapBpm!)
             : _currentCalculatedBpm * scale.factor;
     final parts = shownBpm.toStringAsFixed(1).split('.');
-    const shadow = [Shadow(blurRadius: 12, color: Colors.black)];
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        decoration: BoxDecoration(
-          color: colors.surface.withAlpha(150),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: hasTempo
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text.rich(
-                    TextSpan(children: [
-                      TextSpan(
-                        text: parts[0],
-                        style: const TextStyle(
-                            fontSize: 56, fontWeight: FontWeight.w800, height: 1.1),
-                      ),
-                      TextSpan(
-                        text: '.${parts[1]}',
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
-                      ),
-                      if (scale != ShowScale.normal)
+    final drift = hasTempo ? _drift : null;
+    // A fixed height, so the plot doesn't resize when the badge comes and goes.
+    return SizedBox(
+      height: _readoutHeight,
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: hasTempo
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text.rich(
+                      TextSpan(children: [
                         TextSpan(
-                          text: scale == ShowScale.half ? ' ×½' : ' ×2',
-                          style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: Theme.of(context).colorScheme.secondary),
+                          text: parts[0],
+                          style: const TextStyle(
+                              fontSize: 52, fontWeight: FontWeight.w800, height: 1.1),
                         ),
-                      TextSpan(
-                        text: '  BPM',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[400]),
-                      ),
-                    ]),
-                    // The number takes the drift colour: green / amber / red.
-                    style: TextStyle(
-                        color: _driftColor(_drift) ?? Colors.white, shadows: shadow),
-                  ),
-                  if (_drift != null) _buildDriftBadge(_drift!),
-                ],
-              )
-            : Padding(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                child: Text(
+                        TextSpan(
+                          text: '.${parts[1]}',
+                          style: const TextStyle(
+                              fontSize: 26, fontWeight: FontWeight.w600),
+                        ),
+                        if (scale != ShowScale.normal)
+                          TextSpan(
+                            text: scale == ShowScale.half ? ' ×½' : ' ×2',
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: colors.secondary),
+                          ),
+                        TextSpan(
+                          text: '  BPM',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[400]),
+                        ),
+                      ]),
+                      // The number takes the drift colour: green / amber / red.
+                      style: TextStyle(color: _driftColor(drift) ?? colors.onSurface),
+                    ),
+                    if (drift != null) ...[
+                      const SizedBox(width: 16),
+                      _buildDriftBadge(drift),
+                    ],
+                  ],
+                )
+              : Text(
                   _isRecording ? 'Listening…' : 'Mic off',
                   style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w600,
-                      color: Colors.grey[400],
-                      shadows: shadow),
+                      color: Colors.grey[400]),
                 ),
-              ),
+        ),
       ),
     );
   }
+
+  static const double _readoutHeight = 64;
 
   static Color? _driftColor(TempoDrift? drift) => switch (drift?.level) {
         DriftLevel.onTempo => Colors.greenAccent,
@@ -2082,42 +2129,62 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         null => null,
       };
 
-  /// "✓ on tempo" / "▲ +3.1 rushing" / "▼ −2.0 dragging", in the drift colour.
+  /// A filled arrow with the amount, and "rushing" / "dragging" under it
+  /// (a check and "on tempo" when on tempo), in the drift colour. The arrow
+  /// is large, like the CYD's.
   Widget _buildDriftBadge(TempoDrift drift) {
     final color = _driftColor(drift)!;
     final onTempo = drift.level == DriftLevel.onTempo;
     final amount = drift.deltaBpm.abs().toStringAsFixed(1);
-    final label = onTempo
-        ? 'on tempo'
-        : drift.isRushing
-            ? '+$amount rushing'
-            : '−$amount dragging';
     final octave = drift.octave == 2
         ? ' · at 2× time'
         : drift.octave == 0.5
             ? ' · at ½ time'
             : '';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            onTempo
-                ? Icons.check_circle
-                : drift.isRushing
-                    ? Icons.arrow_upward
-                    : Icons.arrow_downward,
-            size: 16,
-            color: color,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '$label$octave',
-            style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
+    final label = onTempo
+        ? 'on tempo'
+        : drift.isRushing
+            ? 'rushing'
+            : 'dragging';
+    // The arrow on the left, the amount and the word stacked to its right
+    // with a shared left edge, as on the CYD.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          onTempo
+              ? Icons.check_circle
+              : drift.isRushing
+                  ? Icons.arrow_drop_up
+                  : Icons.arrow_drop_down,
+          size: onTempo ? 28 : 44,
+          color: color,
+        ),
+        SizedBox(width: onTempo ? 6 : 0),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!onTempo)
+              Text(
+                '${drift.isRushing ? '+' : '−'}$amount',
+                style: TextStyle(
+                    color: color,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1),
+              ),
+            Text(
+              '$label$octave',
+              style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.1),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -2272,8 +2339,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // The preferred-range slider is for setlist mode; free-running
-          // uses the common-tempo range.
+          // The detected tempo has its own strip above the plot, so it never
+          // covers the graph.
+          _buildTempoReadout(context),
+          // Free-running scale and tap (setlist mode has no extra controls;
+          // its listening window is in the drawer).
           if (_mode == _ScreenMode.freeRunning)
             Wrap(
               alignment: WrapAlignment.center,
@@ -2296,44 +2366,10 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 ),
               ],
             ),
-          if (_mode == _ScreenMode.setlist)
-            Row(
-              children: [
-                Text(
-                  'Range ${_preferredRange.start.round()}–${_preferredRange.end.round()}',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                ),
-                Expanded(
-                  child: RangeSlider(
-                    values: _preferredRange,
-                    min: _rangeLimitMin,
-                    max: _rangeLimitMax,
-                    divisions: ((_rangeLimitMax - _rangeLimitMin) / 5).round(),
-                    labels: RangeLabels(
-                      '${_preferredRange.start.round()}',
-                      '${_preferredRange.end.round()}',
-                    ),
-                    onChanged: (v) {
-                      // Keep at least 10 BPM between handles.
-                      if (v.end - v.start < 10) return;
-                      _setPreferredRange(v);
-                    },
-                    onChangeEnd: (_) => _savePreferredRange(),
-                  ),
-                ),
-              ],
-            ),
           Expanded(
             child: Stack(
               children: [
                 Positioned.fill(child: _buildTempoChart(context)),
-                // Detected tempo, overlaid on the top of the graph.
-                Positioned(
-                  top: 4,
-                  left: 40, // clear of the left axis labels
-                  right: 0,
-                  child: IgnorePointer(child: _buildTempoReadout(context)),
-                ),
                 // Confidence light along the bottom of the plot.
                 Positioned(
                   bottom: 30, // just above the time labels
