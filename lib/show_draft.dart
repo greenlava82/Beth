@@ -36,6 +36,9 @@ class ShowDraft {
   // Last parseable label, used when a free-text label like "intro" is
   // committed and the sequence should carry on from where it was.
   String _nextDefault;
+  // The label just committed, while the pending label is still the untouched
+  // whole-number advance from it. Letter + then goes back to a sub-song of it.
+  ShowLabel? _justCommitted;
 
   /// The working BPM, or null before the first capture/tap/nudge.
   int? get bpm => _bpm;
@@ -82,6 +85,7 @@ class ShowDraft {
   /// advances.
   void setPendingLabel(String label) {
     _pendingLabel = label;
+    _justCommitted = null;
     if (ShowLabel.parse(label) != null) _nextDefault = label.trim();
   }
 
@@ -99,7 +103,19 @@ class ShowDraft {
   }
 
   /// Steps the letter: "3" → "3a" → "3b"; down again to "3a" → "3".
+  ///
+  /// Right after committing "1" (pending "2"), Letter + gives "1a" rather
+  /// than "2a": the next song is a sub-song of the one just finished.
   void stepSuffix(int delta) {
+    final prev = _justCommitted;
+    if (prev != null && delta > 0) {
+      var suffix = prev.suffix;
+      for (var i = 0; i < delta; i++) {
+        suffix = nextSuffix(suffix);
+      }
+      setPendingLabel('${prev.number}$suffix');
+      return;
+    }
     final base = _stepBase;
     var suffix = base.suffix;
     for (var i = 0; i < delta.abs(); i++) {
@@ -134,6 +150,10 @@ class ShowDraft {
     _bpm = null;
     _scale = ShowScale.normal;
     _title = '';
+    final committed = ShowLabel.parse(label);
+    _justCommitted = advance == ShowAdvance.whole && next != null
+        ? committed
+        : null;
     return (name: name, bpm: b);
   }
 
