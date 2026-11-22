@@ -345,7 +345,18 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     await prefs.setDouble('holdSeconds', _displayGate.holdSeconds);
   }
 
+  void _resetDetectionSettings(StateSetter setSheet) {
+    setSheet(() {
+      _displayGate.showAbove = TempoDisplayGate.defaultShowAbove;
+      _displayGate.hysteresis = TempoDisplayGate.defaultHysteresis;
+      _displayGate.holdSeconds = TempoDisplayGate.defaultHoldSeconds;
+    });
+    setState(() {});
+    _saveDisplaySettings();
+  }
+
   /// Sliders for when the readout shows a BPM and how long it holds it.
+  /// Each label's tooltip (tap the label) explains the setting.
   Widget _buildDetectionSettings(BuildContext context, StateSetter setSheet) {
     final g = _displayGate;
     void change(void Function() f) {
@@ -362,73 +373,79 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Expanded(child: Text(title)),
-              Text(value,
-                  style: Theme.of(context).textTheme.titleMedium),
+              Expanded(child: _helpLabel(context, title, help)),
+              Text(value, style: Theme.of(context).textTheme.titleSmall),
             ]),
-            Slider(
-              value: v.clamp(min, max),
-              min: min,
-              max: max,
-              divisions: divisions,
-              onChanged: (x) => change(() => onChanged(x)),
+            SizedBox(
+              height: 32,
+              child: Slider(
+                value: v.clamp(min, max),
+                min: min,
+                max: max,
+                divisions: divisions,
+                onChanged: (x) => change(() => onChanged(x)),
+              ),
             ),
-            Text(help,
-                style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-            const SizedBox(height: 16),
           ],
         );
 
-return Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-      slider(
-        'Show tempo at confidence',
-        g.showAbove.toStringAsFixed(2),
-        'Higher waits for a clearer beat before showing a BPM '
-            'instead of "Listening…".',
-        g.showAbove,
-        _showAboveMin,
-        _showAboveMax,
-        9,
-        (x) => g.showAbove = x,
-      ),
-      slider(
-        'Hysteresis',
-        g.hysteresis.toStringAsFixed(2),
-        'Once showing, the tempo stays until confidence falls '
-            '${g.hysteresis.toStringAsFixed(2)} below that '
-            '(to ${g.hideBelow.toStringAsFixed(2)}).',
-        g.hysteresis,
-        0,
-        _hysteresisMax,
-        20,
-        (x) => g.hysteresis = x,
-      ),
-      slider(
-        'Hold before losing the tempo',
-        '${g.holdSeconds.toStringAsFixed(1)} s',
-        'After the beat goes weak or stops, keep showing the '
-            'last tempo this long.',
-        g.holdSeconds,
-        0,
-        _holdMax,
-        20,
-        (x) => g.holdSeconds = x,
-      ),
-      Align(
-        alignment: Alignment.centerRight,
-        child: TextButton(
-          onPressed: () => change(() {
-            g.showAbove = TempoDisplayGate.defaultShowAbove;
-            g.hysteresis = TempoDisplayGate.defaultHysteresis;
-            g.holdSeconds = TempoDisplayGate.defaultHoldSeconds;
-          }),
-          child: const Text('Reset to defaults'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        slider(
+          'Show tempo at confidence',
+          g.showAbove.toStringAsFixed(2),
+          'Higher waits for a clearer beat before showing a BPM '
+              'instead of "Listening…".',
+          g.showAbove,
+          _showAboveMin,
+          _showAboveMax,
+          9,
+          (x) => g.showAbove = x,
         ),
+        slider(
+          'Hysteresis',
+          g.hysteresis.toStringAsFixed(2),
+          'Once showing, the tempo stays until confidence falls '
+              '${g.hysteresis.toStringAsFixed(2)} below that '
+              '(to ${g.hideBelow.toStringAsFixed(2)}).',
+          g.hysteresis,
+          0,
+          _hysteresisMax,
+          20,
+          (x) => g.hysteresis = x,
+        ),
+        slider(
+          'Hold before losing the tempo',
+          '${g.holdSeconds.toStringAsFixed(1)} s',
+          'After the beat goes weak or stops, keep showing the '
+              'last tempo this long.',
+          g.holdSeconds,
+          0,
+          _holdMax,
+          20,
+          (x) => g.holdSeconds = x,
+        ),
+      ],
+    );
+  }
+
+  /// A label with an info icon; tapping either shows [help] as a tooltip.
+  Widget _helpLabel(BuildContext context, String text, String help) {
+    return Tooltip(
+      message: help,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text(text)),
+          const SizedBox(width: 6),
+          Icon(Icons.info_outline, size: 14, color: Colors.grey[400]),
+        ],
       ),
-  ],
-);
+    );
   }
 
   Future<void> _saveListeningWindow() async {
@@ -466,13 +483,6 @@ return Column(
             },
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'How far either side of the song\'s BPM the listener looks '
-          '(shaded on the graph). Tight resists octave mistakes; '
-          'wide keeps tracking a band that rushes or drags a lot.',
-          style: TextStyle(color: Colors.grey[400], fontSize: 12),
-        ),
       ],
     );
   }
@@ -488,11 +498,23 @@ return Column(
       builder: (context) => StatefulBuilder(
         builder: (context, setSheet) {
           final theme = Theme.of(context);
-          Widget section(String title) => Padding(
-                padding: const EdgeInsets.only(top: 12, bottom: 8),
-                child: Text(title,
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(color: theme.colorScheme.primary)),
+          Widget section(String title, {String? help, Widget? action}) =>
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: SizedBox(
+                  height: 36,
+                  child: Row(children: [
+                    DefaultTextStyle.merge(
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(color: theme.colorScheme.primary),
+                      child: help == null
+                          ? Text(title)
+                          : _helpLabel(context, title, help),
+                    ),
+                    const Spacer(),
+                    ?action,
+                  ]),
+                ),
               );
           return SafeArea(
             child: SingleChildScrollView(
@@ -501,25 +523,38 @@ return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Settings', style: theme.textTheme.titleLarge),
-                  section('Listening window'),
+                  section(
+                    'Listening window',
+                    help: 'How far either side of the song\'s BPM the '
+                        'listener looks (shaded on the graph). Tight resists '
+                        'octave mistakes; wide keeps tracking a band that '
+                        'rushes or drags a lot.',
+                  ),
                   _buildListeningWindowSettings(context, setSheet),
-                  const Divider(height: 32),
-                  section('Tempo readout'),
+                  const Divider(height: 24),
+                  section(
+                    'Tempo readout',
+                    action: TextButton(
+                      onPressed: () => _resetDetectionSettings(setSheet),
+                      child: const Text('Reset'),
+                    ),
+                  ),
                   _buildDetectionSettings(context, setSheet),
-                  const Divider(height: 8),
+                  const Divider(height: 16),
                   section('Back up & restore'),
                   ListTile(
+                    dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.save_alt),
                     title: const Text('Back up all playlists'),
-                    subtitle: const Text(
-                        'Save a file to the phone, Google Drive, iCloud Drive…'),
+                    subtitle: const Text('Save a file to the phone or Drive'),
                     onTap: () {
                       Navigator.pop(context);
                       _backUpPlaylists();
                     },
                   ),
                   ListTile(
+                    dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.restore),
                     title: const Text('Restore from a file'),
@@ -532,6 +567,7 @@ return Column(
                   ),
                   const Divider(height: 8),
                   ListTile(
+                    dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.info_outline),
                     title: const Text('About Beth'),
