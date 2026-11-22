@@ -1314,6 +1314,58 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (wasRecording && mounted) _startRecording();
   }
 
+  /// Choose a playlist; free-running mode ends if it was on.
+  void _selectPlaylist(int index) {
+    if (_mode == _ScreenMode.freeRunning) _setFreeRunning(false);
+    setState(() {
+      _currentPlaylistIndex = index;
+      _currentSetlistIndex = 0;
+      _updateMetronomeTempo();
+    });
+  }
+
+  /// The app bar title: the playlist (or "Free running") with a drop-down.
+  /// "Free run" is pinned at the top, above the playlists.
+  Widget _buildPlaylistSwitcher(Playlist playlist) {
+    const freeRun = -1;
+    final free = _mode == _ScreenMode.freeRunning;
+    return PopupMenuButton<int>(
+      tooltip: 'Switch playlist',
+      position: PopupMenuPosition.under,
+      onSelected: (value) {
+        if (value == freeRun) {
+          _setFreeRunning(true);
+        } else {
+          _selectPlaylist(value);
+        }
+      },
+      itemBuilder: (context) => [
+        CheckedPopupMenuItem(
+          value: freeRun,
+          checked: free,
+          child: const Text('Free run'),
+        ),
+        const PopupMenuDivider(),
+        for (var i = 0; i < _playlists.length; i++)
+          CheckedPopupMenuItem(
+            value: i,
+            checked: !free && i == _currentPlaylistIndex,
+            child: Text(_playlists[i].name, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(free ? 'Free running' : playlist.name,
+                overflow: TextOverflow.ellipsis),
+          ),
+          const Icon(Icons.arrow_drop_down),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBandMenu() {
     final leading = _bandLeader.isActive;
     return PopupMenuButton<void Function()>(
@@ -1797,11 +1849,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     ].join(' · ')),
                     selected: _currentPlaylistIndex == index,
                     onTap: () {
-                      setState(() {
-                        _currentPlaylistIndex = index;
-                        _currentSetlistIndex = 0;
-                        _updateMetronomeTempo();
-                      });
+                      _selectPlaylist(index);
                       Navigator.pop(context);
                     },
                     trailing: PopupMenuButton<String>(
@@ -2357,15 +2405,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                   ],
                 ),
               )
-            : Text(_mode == _ScreenMode.freeRunning ? 'Free running' : playlist.name,
-                overflow: TextOverflow.ellipsis),
+            : _buildPlaylistSwitcher(playlist),
         actions: [
           _buildBandMenu(),
-          IconButton(
-            tooltip: _mode == _ScreenMode.freeRunning ? 'Back to setlist' : 'Free-running mode',
-            icon: Icon(_mode == _ScreenMode.freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
-            onPressed: () => _setFreeRunning(_mode != _ScreenMode.freeRunning),
-          ),
         ],
       ),
       drawer: _buildDrawer(),
