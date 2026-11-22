@@ -2321,15 +2321,25 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
     return Scaffold(
       appBar: AppBar(
-        // The Beth mark opens the playlists drawer (in place of the
-        // usual hamburger icon); the title is the current playlist.
+        // The Beth mark opens the playlists drawer. A vertical "more" mark
+        // is part of the button so it reads as a menu, in the same space.
         leading: Builder(
           builder: (context) => IconButton(
             tooltip: 'Playlists',
             onPressed: () => Scaffold.of(context).openDrawer(),
             // The image has padding around the mark; 40 makes the mark itself
             // about the size of a regular toolbar icon.
-            icon: Image.asset('assets/branding/splash.png', height: 40),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Image.asset('assets/branding/splash.png', height: 40),
+                const Positioned(
+                  left: -6,
+                  child: Icon(Icons.more_vert, size: 18),
+                ),
+              ],
+            ),
           ),
         ),
         title: _mode == _ScreenMode.show
