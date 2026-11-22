@@ -346,107 +346,89 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   }
 
   /// Sliders for when the readout shows a BPM and how long it holds it.
-  void _showDetectionSettings() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheet) {
-          final g = _displayGate;
-          void change(void Function() f) {
-            setSheet(f);
-            // Re-evaluate the readout with the new settings.
-            setState(() {});
-            _saveDisplaySettings();
-          }
+  Widget _buildDetectionSettings(BuildContext context, StateSetter setSheet) {
+    final g = _displayGate;
+    void change(void Function() f) {
+      setSheet(f);
+      // Re-evaluate the readout with the new settings.
+      setState(() {});
+      _saveDisplaySettings();
+    }
 
-          Widget slider(String title, String value, String help, double v,
-                  double min, double max, int divisions,
-                  ValueChanged<double> onChanged) =>
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Expanded(child: Text(title)),
-                    Text(value,
-                        style: Theme.of(context).textTheme.titleMedium),
-                  ]),
-                  Slider(
-                    value: v.clamp(min, max),
-                    min: min,
-                    max: max,
-                    divisions: divisions,
-                    onChanged: (x) => change(() => onChanged(x)),
-                  ),
-                  Text(help,
-                      style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-                  const SizedBox(height: 16),
-                ],
-              );
-
-          return SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Tempo readout',
-                      style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  slider(
-                    'Show tempo at confidence',
-                    g.showAbove.toStringAsFixed(2),
-                    'Higher waits for a clearer beat before showing a BPM '
-                        'instead of "Listening…".',
-                    g.showAbove,
-                    _showAboveMin,
-                    _showAboveMax,
-                    9,
-                    (x) => g.showAbove = x,
-                  ),
-                  slider(
-                    'Hysteresis',
-                    g.hysteresis.toStringAsFixed(2),
-                    'Once showing, the tempo stays until confidence falls '
-                        '${g.hysteresis.toStringAsFixed(2)} below that '
-                        '(to ${g.hideBelow.toStringAsFixed(2)}).',
-                    g.hysteresis,
-                    0,
-                    _hysteresisMax,
-                    20,
-                    (x) => g.hysteresis = x,
-                  ),
-                  slider(
-                    'Hold before losing the tempo',
-                    '${g.holdSeconds.toStringAsFixed(1)} s',
-                    'After the beat goes weak or stops, keep showing the '
-                        'last tempo this long.',
-                    g.holdSeconds,
-                    0,
-                    _holdMax,
-                    20,
-                    (x) => g.holdSeconds = x,
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => change(() {
-                        g.showAbove = TempoDisplayGate.defaultShowAbove;
-                        g.hysteresis = TempoDisplayGate.defaultHysteresis;
-                        g.holdSeconds = TempoDisplayGate.defaultHoldSeconds;
-                      }),
-                      child: const Text('Reset to defaults'),
-                    ),
-                  ),
-                ],
-              ),
+    Widget slider(String title, String value, String help, double v,
+            double min, double max, int divisions,
+            ValueChanged<double> onChanged) =>
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(child: Text(title)),
+              Text(value,
+                  style: Theme.of(context).textTheme.titleMedium),
+            ]),
+            Slider(
+              value: v.clamp(min, max),
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: (x) => change(() => onChanged(x)),
             ),
-          );
-        },
+            Text(help,
+                style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+            const SizedBox(height: 16),
+          ],
+        );
+
+return Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+      slider(
+        'Show tempo at confidence',
+        g.showAbove.toStringAsFixed(2),
+        'Higher waits for a clearer beat before showing a BPM '
+            'instead of "Listening…".',
+        g.showAbove,
+        _showAboveMin,
+        _showAboveMax,
+        9,
+        (x) => g.showAbove = x,
       ),
-    );
+      slider(
+        'Hysteresis',
+        g.hysteresis.toStringAsFixed(2),
+        'Once showing, the tempo stays until confidence falls '
+            '${g.hysteresis.toStringAsFixed(2)} below that '
+            '(to ${g.hideBelow.toStringAsFixed(2)}).',
+        g.hysteresis,
+        0,
+        _hysteresisMax,
+        20,
+        (x) => g.hysteresis = x,
+      ),
+      slider(
+        'Hold before losing the tempo',
+        '${g.holdSeconds.toStringAsFixed(1)} s',
+        'After the beat goes weak or stops, keep showing the '
+            'last tempo this long.',
+        g.holdSeconds,
+        0,
+        _holdMax,
+        20,
+        (x) => g.holdSeconds = x,
+      ),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton(
+          onPressed: () => change(() {
+            g.showAbove = TempoDisplayGate.defaultShowAbove;
+            g.hysteresis = TempoDisplayGate.defaultHysteresis;
+            g.holdSeconds = TempoDisplayGate.defaultHoldSeconds;
+          }),
+          child: const Text('Reset to defaults'),
+        ),
+      ),
+  ],
+);
   }
 
   Future<void> _saveListeningWindow() async {
@@ -455,56 +437,115 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   }
 
   /// Choose how wide a window around each song's BPM the detector favours.
-  void _showListeningWindowSettings() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheet) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Listening window',
-                    style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: SegmentedButton<ListeningWindow>(
-                    showSelectedIcon: false,
-                    segments: [
-                      for (final w in ListeningWindow.values)
-                        ButtonSegment(
-                            value: w, label: Text('${w.label} ${w.percent}')),
-                    ],
-                    selected: {_listeningWindow},
-                    onSelectionChanged: (s) {
-                      setSheet(() => _listeningWindow = s.first);
-                      setState(() {
-                        final playlist = _playlists[_currentPlaylistIndex];
-                        if (_mode == _ScreenMode.setlist &&
-                            playlist.items.isNotEmpty) {
-                          _centerPreferredRangeOn(
-                              playlist.items[_currentSetlistIndex].bpm.toDouble());
-                        }
-                      });
-                      _saveListeningWindow();
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'How far either side of the song\'s BPM the listener looks '
-                  '(shaded on the graph). Tight resists octave mistakes; '
-                  'wide keeps tracking a band that rushes or drags a lot.',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                ),
-              ],
-            ),
+  Widget _buildListeningWindowSettings(
+      BuildContext context, StateSetter setSheet) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<ListeningWindow>(
+            showSelectedIcon: false,
+            segments: [
+              for (final w in ListeningWindow.values)
+                ButtonSegment(
+                    value: w, label: Text('${w.label} ${w.percent}')),
+            ],
+            selected: {_listeningWindow},
+            onSelectionChanged: (s) {
+              setSheet(() => _listeningWindow = s.first);
+              setState(() {
+                final playlist = _playlists[_currentPlaylistIndex];
+                if (_mode == _ScreenMode.setlist &&
+                    playlist.items.isNotEmpty) {
+                  _centerPreferredRangeOn(
+                      playlist.items[_currentSetlistIndex].bpm.toDouble());
+                }
+              });
+              _saveListeningWindow();
+            },
           ),
         ),
+        const SizedBox(height: 8),
+        Text(
+          'How far either side of the song\'s BPM the listener looks '
+          '(shaded on the graph). Tight resists octave mistakes; '
+          'wide keeps tracking a band that rushes or drags a lot.',
+          style: TextStyle(color: Colors.grey[400], fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  /// Everything configurable, in one sheet: listening, tempo readout,
+  /// backup/restore and About.
+  void _showSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheet) {
+          final theme = Theme.of(context);
+          Widget section(String title) => Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 8),
+                child: Text(title,
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(color: theme.colorScheme.primary)),
+              );
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Settings', style: theme.textTheme.titleLarge),
+                  section('Listening window'),
+                  _buildListeningWindowSettings(context, setSheet),
+                  const Divider(height: 32),
+                  section('Tempo readout'),
+                  _buildDetectionSettings(context, setSheet),
+                  const Divider(height: 8),
+                  section('Back up & restore'),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.save_alt),
+                    title: const Text('Back up all playlists'),
+                    subtitle: const Text(
+                        'Save a file to the phone, Google Drive, iCloud Drive…'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _backUpPlaylists();
+                    },
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.restore),
+                    title: const Text('Restore from a file'),
+                    subtitle: const Text(
+                        'A backup, or a setlist shared as a file'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _restoreFromFile();
+                    },
+                  ),
+                  const Divider(height: 8),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.info_outline),
+                    title: const Text('About Beth'),
+                    trailing: _appVersion == null
+                        ? null
+                        : Text(_appVersion!.label,
+                            style: theme.textTheme.bodySmall),
+                    onTap: _showAbout,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1498,37 +1539,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   // storage on Android)
   // ==========================================================================
 
-  void _showBackupSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.save_alt),
-              title: const Text('Back up all playlists'),
-              subtitle: const Text('Save a file to the phone, Google Drive, iCloud Drive…'),
-              onTap: () {
-                Navigator.pop(context);
-                _backUpPlaylists();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.restore),
-              title: const Text('Restore from a file'),
-              subtitle: const Text('A backup, or a setlist shared as a file'),
-              onTap: () {
-                Navigator.pop(context);
-                _restoreFromFile();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   static const MethodChannel _filesChannel = MethodChannel('beth/files');
 
   /// Saves a backup file. Android: the system "Save to…" picker (Downloads,
@@ -1672,10 +1682,50 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         top: false,
         child: Column(
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.teal),
-              child: Center(
-                child: Text('Playlists', style: TextStyle(color: Colors.white, fontSize: 24)),
+            // Slim header: title plus the playlist-level actions, in place of
+            // a tall banner and three list rows.
+            Container(
+              color: Colors.teal,
+              padding: EdgeInsets.fromLTRB(
+                  16, MediaQuery.paddingOf(context).top + 4, 4, 4),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Playlists',
+                        style: TextStyle(color: Colors.white, fontSize: 22)),
+                  ),
+                  IconButton(
+                    tooltip: 'New playlist',
+                    color: Colors.white,
+                    icon: const Icon(Icons.add),
+                    onPressed: () {
+                      Navigator.pop(context); // close drawer
+                      _showAddPlaylistDialog();
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'Import playlist',
+                    color: Colors.white,
+                    icon: const Icon(Icons.content_paste),
+                    onPressed: () {
+                      Navigator.pop(context); // close drawer
+                      _showImportDialog();
+                    },
+                  ),
+                  IconButton(
+                    tooltip: _mode == _ScreenMode.show
+                        ? 'Done building show'
+                        : 'Build a show',
+                    color: Colors.white,
+                    icon: Icon(_mode == _ScreenMode.show
+                        ? Icons.check
+                        : Icons.playlist_add),
+                    onPressed: () {
+                      Navigator.pop(context); // close drawer
+                      _setShowMode(_mode != _ScreenMode.show);
+                    },
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -1744,72 +1794,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 },
               ),
             ),
-            const Divider(),
+            const Divider(height: 1),
             ListTile(
-              leading: Icon(_mode == _ScreenMode.show
-                  ? Icons.check
-                  : Icons.playlist_add),
-              title: Text(_mode == _ScreenMode.show
-                  ? 'Done building show'
-                  : 'Build a show'),
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
               onTap: () {
                 Navigator.pop(context); // close drawer
-                _setShowMode(_mode != _ScreenMode.show);
+                _showSettings();
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('New Playlist'),
-              onTap: () {
-                Navigator.pop(context); // close drawer
-                _showAddPlaylistDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.content_paste),
-              title: const Text('Import Playlist'),
-              onTap: () {
-                Navigator.pop(context); // close drawer
-                _showImportDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.track_changes),
-              title: const Text('Listening window'),
-              subtitle: Text(
-                  '${_listeningWindow.label} ${_listeningWindow.percent} around each song'),
-              onTap: () {
-                Navigator.pop(context); // close drawer
-                _showListeningWindowSettings();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.tune),
-              title: const Text('Tempo readout'),
-              subtitle: const Text('Thresholds, hysteresis, hold'),
-              onTap: () {
-                Navigator.pop(context); // close drawer
-                _showDetectionSettings();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.backup),
-              title: const Text('Back up & restore'),
-              onTap: () {
-                Navigator.pop(context); // close drawer
-                _showBackupSheet();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('About Beth'),
-              subtitle: _appVersion == null ? null : Text(_appVersion!.label),
-              onTap: () {
-                Navigator.pop(context); // close drawer
-                _showAbout();
-              },
-            ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
