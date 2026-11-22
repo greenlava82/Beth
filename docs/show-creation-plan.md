@@ -14,8 +14,12 @@ scaled heard tempo; Capture saves it rounded.
   for the show (default name "New show"). Nothing touches an existing setlist.
 - **A song's number is its `name`** ("1", "2a"). No change to `SetlistItem`,
   JSON, export or band sync. No per-song icons.
-- **Wide, unrestricted listening.** `expectedBpm = null`, preferred range about
-  40–240. `_updateMetronomeTempo()` must not retune the detector while the mode
+- **One-octave listening, then an anchor.** `expectedBpm = null` and preferred
+  range 80–160 until the user sets a BPM (Capture, Tap, nudge); that BPM is the
+  anchor: heard tempos are folded by octaves to the one nearest it
+  (`ShowDraft.shown`) and it is fed to the detector as `expectedBpm`. Picking
+  ½/2 drops the anchor (it is the new octave choice); Commit clears it. A wide
+  40–240 range made the root flip between 40/80/160. `_updateMetronomeTempo()` must not retune the detector while the mode
   is on (same rule as free-running).
 - **The metronome** plays the working BPM only when the user presses play.
   `TempoLock` is disarmed.

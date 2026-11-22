@@ -130,7 +130,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   static const double _commonTempoBpm = 120;
   static const RangeValues _commonTempoRange = RangeValues(80, 160);
   // Show creation mode: listen wide, since any song might come next.
-  static const RangeValues _showTempoRange = RangeValues(40, 240);
+  static const RangeValues _showTempoRange = RangeValues(80, 160);
   ShowDraft _showDraft = ShowDraft();
   // The playlist the show is being built into (null outside the mode).
   Playlist? _showPlaylist;
@@ -558,6 +558,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (_mode == _ScreenMode.show) {
       setState(() {
         _showDraft.nudge(delta);
+        _syncShowHint();
         _updateMetronomeTempo();
       });
       return;
@@ -709,11 +710,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     _currentSetlistIndex = 0;
   }
 
+  /// Point the detector at the working BPM so it listens in the octave the
+  /// user chose (null before any capture, tap or nudge: no bias).
+  void _syncShowHint() => _tempoDetector.expectedBpm = _showDraft.anchor;
+
   /// Set the working BPM from the heard tempo (scaled).
   void _showCapture() {
     if (_currentCalculatedBpm <= 0) return;
     setState(() {
       _showDraft.capture(_currentCalculatedBpm);
+      _syncShowHint();
       _updateMetronomeTempo();
     });
   }
@@ -723,6 +729,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (bpm == null) return;
     setState(() {
       _showDraft.setBpm(bpm);
+      _syncShowHint();
       _updateMetronomeTempo();
     });
   }
@@ -738,6 +745,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     setState(() {
       playlist.items.add(item);
       _tapTempo.reset();
+      _syncShowHint();
       _updateMetronomeTempo();
     });
     _savePlaylists();
@@ -747,6 +755,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         _showDraft.setPendingLabel(label);
         _showDraft.title = title;
         _showDraft.setBpm(song.bpm.toDouble());
+        _syncShowHint();
         _updateMetronomeTempo();
       });
       _savePlaylists();
@@ -1944,7 +1953,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     final hasTempo = _currentCalculatedBpm > 0;
     // In show mode the half/double-time scale applies to what's shown.
     final scale = _mode == _ScreenMode.show ? _showDraft.scale : ShowScale.normal;
-    final shownBpm = _currentCalculatedBpm * scale.factor;
+    final shownBpm = _mode == _ScreenMode.show
+        ? _showDraft.shown(_currentCalculatedBpm)
+        : _currentCalculatedBpm;
     final parts = shownBpm.toStringAsFixed(1).split('.');
     const shadow = [Shadow(blurRadius: 12, color: Colors.black)];
     return Center(
@@ -2440,14 +2451,16 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       emptySelectionAllowed: true,
       style: const ButtonStyle(visualDensity: VisualDensity.compact),
       segments: const [
-        ButtonSegment(value: ShowScale.half, label: Text('½')),
-        ButtonSegment(value: ShowScale.normal, label: Text('1')),
-        ButtonSegment(value: ShowScale.twice, label: Text('2')),
+        ButtonSegment(value: ShowScale.half, label: Text('½x')),
+        ButtonSegment(value: ShowScale.normal, label: Text('1x')),
+        ButtonSegment(value: ShowScale.twice, label: Text('2x')),
       ],
       selected: {draft.scale},
       // Tapping the active option arrives as an empty selection.
-      onSelectionChanged: (s) => setState(
-          () => draft.selectScale(s.isEmpty ? draft.scale : s.first)),
+      onSelectionChanged: (s) => setState(() {
+        draft.selectScale(s.isEmpty ? draft.scale : s.first);
+        _syncShowHint();
+      }),
     );
 
     final captureTap = Wrap(
