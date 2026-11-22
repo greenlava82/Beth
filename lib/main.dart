@@ -2066,64 +2066,68 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                 _currentCalculatedBpm * scale.factor, _freeTapBpm!)
             : _currentCalculatedBpm * scale.factor;
     final parts = shownBpm.toStringAsFixed(1).split('.');
-    const shadow = [Shadow(blurRadius: 12, color: Colors.black)];
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        decoration: BoxDecoration(
-          color: colors.surface.withAlpha(150),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: hasTempo
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text.rich(
-                    TextSpan(children: [
-                      TextSpan(
-                        text: parts[0],
-                        style: const TextStyle(
-                            fontSize: 56, fontWeight: FontWeight.w800, height: 1.1),
-                      ),
-                      TextSpan(
-                        text: '.${parts[1]}',
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
-                      ),
-                      if (scale != ShowScale.normal)
+    final drift = hasTempo ? _drift : null;
+    // A fixed height, so the plot doesn't resize when the badge comes and goes.
+    return SizedBox(
+      height: _readoutHeight,
+      child: Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: hasTempo
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text.rich(
+                      TextSpan(children: [
                         TextSpan(
-                          text: scale == ShowScale.half ? ' ×½' : ' ×2',
-                          style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: Theme.of(context).colorScheme.secondary),
+                          text: parts[0],
+                          style: const TextStyle(
+                              fontSize: 52, fontWeight: FontWeight.w800, height: 1.1),
                         ),
-                      TextSpan(
-                        text: '  BPM',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey[400]),
-                      ),
-                    ]),
-                    // The number takes the drift colour: green / amber / red.
-                    style: TextStyle(
-                        color: _driftColor(_drift) ?? Colors.white, shadows: shadow),
-                  ),
-                  if (_drift != null) _buildDriftBadge(_drift!),
-                ],
-              )
-            : Padding(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                child: Text(
+                        TextSpan(
+                          text: '.${parts[1]}',
+                          style: const TextStyle(
+                              fontSize: 26, fontWeight: FontWeight.w600),
+                        ),
+                        if (scale != ShowScale.normal)
+                          TextSpan(
+                            text: scale == ShowScale.half ? ' ×½' : ' ×2',
+                            style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: colors.secondary),
+                          ),
+                        TextSpan(
+                          text: '  BPM',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[400]),
+                        ),
+                      ]),
+                      // The number takes the drift colour: green / amber / red.
+                      style: TextStyle(color: _driftColor(drift) ?? colors.onSurface),
+                    ),
+                    if (drift != null) ...[
+                      const SizedBox(width: 16),
+                      _buildDriftBadge(drift),
+                    ],
+                  ],
+                )
+              : Text(
                   _isRecording ? 'Listening…' : 'Mic off',
                   style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w600,
-                      color: Colors.grey[400],
-                      shadows: shadow),
+                      color: Colors.grey[400]),
                 ),
-              ),
+        ),
       ),
     );
   }
+
+  static const double _readoutHeight = 64;
 
   static Color? _driftColor(TempoDrift? drift) => switch (drift?.level) {
         DriftLevel.onTempo => Colors.greenAccent,
@@ -2132,42 +2136,52 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         null => null,
       };
 
-  /// "✓ on tempo" / "▲ +3.1 rushing" / "▼ −2.0 dragging", in the drift colour.
+  /// A filled arrow with the amount, and "rushing" / "dragging" under it
+  /// (a check and "on tempo" when on tempo), in the drift colour. The arrow
+  /// is large, like the CYD's.
   Widget _buildDriftBadge(TempoDrift drift) {
     final color = _driftColor(drift)!;
     final onTempo = drift.level == DriftLevel.onTempo;
     final amount = drift.deltaBpm.abs().toStringAsFixed(1);
-    final label = onTempo
-        ? 'on tempo'
-        : drift.isRushing
-            ? '+$amount rushing'
-            : '−$amount dragging';
     final octave = drift.octave == 2
         ? ' · at 2× time'
         : drift.octave == 0.5
             ? ' · at ½ time'
             : '';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            onTempo
-                ? Icons.check_circle
-                : drift.isRushing
-                    ? Icons.arrow_upward
-                    : Icons.arrow_downward,
-            size: 16,
-            color: color,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '$label$octave',
-            style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
+    final label = onTempo
+        ? 'on tempo'
+        : drift.isRushing
+            ? 'rushing'
+            : 'dragging';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              onTempo
+                  ? Icons.check_circle
+                  : drift.isRushing
+                      ? Icons.arrow_drop_up
+                      : Icons.arrow_drop_down,
+              size: onTempo ? 26 : 40,
+              color: color,
+            ),
+            if (!onTempo)
+              Text(
+                '${drift.isRushing ? '+' : '−'}$amount',
+                style: TextStyle(
+                    color: color, fontSize: 22, fontWeight: FontWeight.w700),
+              ),
+          ],
+        ),
+        Text(
+          '$label$octave',
+          style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ],
     );
   }
 
@@ -2322,8 +2336,11 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // The preferred-range slider is for setlist mode; free-running
-          // uses the common-tempo range.
+          // The detected tempo has its own strip above the plot, so it never
+          // covers the graph.
+          _buildTempoReadout(context),
+          // Free-running scale and tap (setlist mode has no extra controls;
+          // its listening window is in the drawer).
           if (_mode == _ScreenMode.freeRunning)
             Wrap(
               alignment: WrapAlignment.center,
@@ -2350,13 +2367,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             child: Stack(
               children: [
                 Positioned.fill(child: _buildTempoChart(context)),
-                // Detected tempo, overlaid on the top of the graph.
-                Positioned(
-                  top: 4,
-                  left: 40, // clear of the left axis labels
-                  right: 0,
-                  child: IgnorePointer(child: _buildTempoReadout(context)),
-                ),
                 // Confidence light along the bottom of the plot.
                 Positioned(
                   bottom: 30, // just above the time labels
