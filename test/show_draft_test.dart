@@ -17,6 +17,9 @@ void main() {
     expect(d.bpm, 70);
     d.capture(142);
     expect(d.bpm, 71);
+    expect(ShowDraft().scaled(100), 100);
+    d.selectScale(ShowScale.twice); // choosing a scale drops the anchor
+    d.selectScale(ShowScale.half);
     expect(d.scaled(100), 50);
   });
 
@@ -209,5 +212,54 @@ void main() {
     d.stepNumber(1);
     d.stepSuffix(1);
     expect(d.pendingLabel, '3a');
+  });
+
+  group('anchor', () {
+    test('foldToAnchor picks the octave nearest the anchor', () {
+      expect(ShowDraft.foldToAnchor(40, 80), 80);
+      expect(ShowDraft.foldToAnchor(160, 80), 80);
+      expect(ShowDraft.foldToAnchor(80, 80), 80);
+      expect(ShowDraft.foldToAnchor(82, 80), closeTo(82, 1e-9));
+      expect(ShowDraft.foldToAnchor(90, 160), closeTo(180, 1e-9));
+    });
+
+    test('no anchor leaves heard tempos alone', () {
+      final d = ShowDraft();
+      expect(d.anchor, isNull);
+      expect(d.shown(40), 40);
+    });
+
+    test('after a capture the readout stays in that octave', () {
+      final d = ShowDraft();
+      d.selectScale(ShowScale.twice);
+      d.capture(40); // heard 40, x2 -> 80
+      expect(d.bpm, 80);
+      // The detector now flips to other roots of the same pulse.
+      expect(d.shown(80), 80);
+      expect(d.shown(160), 80);
+      expect(d.shown(40), 80);
+    });
+
+    test('tap and nudge set the anchor', () {
+      final d = ShowDraft();
+      d.setBpm(70);
+      expect(d.anchor, 70);
+      expect(d.shown(140), 70);
+      d.nudge(5);
+      expect(d.anchor, 75);
+    });
+
+    test('choosing a scale drops the anchor; commit and reset clear it', () {
+      final d = ShowDraft();
+      d.setBpm(70);
+      d.selectScale(ShowScale.twice);
+      expect(d.anchor, isNull);
+      d.setBpm(70);
+      d.commit();
+      expect(d.anchor, isNull);
+      d.setBpm(90);
+      d.resetWorking();
+      expect(d.anchor, isNull);
+    });
   });
 }

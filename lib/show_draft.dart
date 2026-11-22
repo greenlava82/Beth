@@ -2,6 +2,8 @@
 /// half/double-time scale, and the pending song label. Pure Dart.
 library;
 
+import 'dart:math' as math;
+
 import 'show_numbering.dart';
 
 /// Half-time / double-time display modifier for the song being captured.
@@ -31,6 +33,10 @@ class ShowDraft {
   ShowAdvance advance;
 
   int? _bpm;
+  // The BPM the user last settled on (capture, tap, nudge). Heard tempos are
+  // folded by octaves to the one nearest it, so the readout doesn't jump
+  // between 40, 80 and 160 when the detector changes its mind about the root.
+  double? _anchor;
   ShowScale _scale = ShowScale.normal;
   String _pendingLabel;
   // Last parseable label, used when a free-text label like "intro" is
@@ -43,6 +49,9 @@ class ShowDraft {
   /// The working BPM, or null before the first capture/tap/nudge.
   int? get bpm => _bpm;
   ShowScale get scale => _scale;
+
+  /// The tempo the listener should favour (the working BPM), or null.
+  double? get anchor => _anchor;
   String get pendingLabel => _pendingLabel;
 
   String _title = '';
@@ -59,25 +68,51 @@ class ShowDraft {
 
   static int _clamp(num v) => v.round().clamp(minBpm, maxBpm);
 
+  /// Folds [bpm] by powers of two to the octave nearest [anchor].
+  static double foldToAnchor(double bpm, double anchor) {
+    if (bpm <= 0 || anchor <= 0) return bpm;
+    final octaves = (math.log(anchor / bpm) / math.ln2).round();
+    return bpm * math.pow(2, octaves);
+  }
+
+  /// The heard tempo as the user wants to see it: scaled, then (once a BPM
+  /// has been set) folded into the octave of the anchor.
+  double shown(double heardBpm) {
+    final scaled = heardBpm * _scale.factor;
+    final a = _anchor;
+    return a == null ? scaled : foldToAnchor(scaled, a);
+  }
+
   /// Sets the working BPM from the heard tempo, scaled. Overwrites.
-  void capture(double heardBpm) => _bpm = _clamp(heardBpm * _scale.factor);
+  void capture(double heardBpm) {
+    _bpm = _clamp(shown(heardBpm));
+    _anchor = _bpm!.toDouble();
+  }
 
   /// What a capture would give right now (for the live readout).
-  int scaled(double heardBpm) => _clamp(heardBpm * _scale.factor);
+  int scaled(double heardBpm) => _clamp(shown(heardBpm));
 
   /// Sets the working BPM directly (tap tempo); ignores the scale.
-  void setBpm(double bpm) => _bpm = _clamp(bpm);
+  void setBpm(double bpm) {
+    _bpm = _clamp(bpm);
+    _anchor = _bpm!.toDouble();
+  }
 
   /// Adds [delta] to the working BPM; ignores the scale. No-op before a
   /// BPM has been set.
   void nudge(int delta) {
     final b = _bpm;
-    if (b != null) _bpm = _clamp(b + delta);
+    if (b != null) {
+      _bpm = _clamp(b + delta);
+      _anchor = _bpm!.toDouble();
+    }
   }
 
   /// Selects a scale. Selecting the active non-normal option returns to
-  /// normal; options replace each other rather than stack.
+  /// normal; options replace each other rather than stack. Drops the anchor,
+  /// since the scale is the user's new octave choice.
   void selectScale(ShowScale s) {
+    _anchor = null;
     _scale = (s == _scale && s != ShowScale.normal) ? ShowScale.normal : s;
   }
 
@@ -148,6 +183,7 @@ class ShowDraft {
     _pendingLabel = next ?? _nextDefault;
     if (next != null) _nextDefault = next;
     _bpm = null;
+    _anchor = null;
     _scale = ShowScale.normal;
     _title = '';
     final committed = ShowLabel.parse(label);
@@ -160,6 +196,7 @@ class ShowDraft {
   /// Drops the working BPM and scale (leaving the mode); the label stays.
   void resetWorking() {
     _bpm = null;
+    _anchor = null;
     _scale = ShowScale.normal;
   }
 }
