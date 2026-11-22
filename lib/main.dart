@@ -1353,11 +1353,27 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       // nearby leaders happen to share an icon).
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: !leading
-            ? const Icon(Icons.podcasts)
-            : _bandLeader.error == null
-                ? BandSyncIconBadge(_bandLeader.icon, size: 36)
-                : const Icon(Icons.podcasts, color: Colors.redAccent),
+        // A fixed slot, so the title doesn't shift when leading starts; a red
+        // dot marks an error.
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (!leading)
+                const Icon(Icons.podcasts)
+              else
+                BandSyncIconBadge(_bandLeader.icon, size: 28),
+              if (leading && _bandLeader.error != null)
+                const Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Icon(Icons.circle, size: 10, color: Colors.redAccent),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
