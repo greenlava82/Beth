@@ -734,6 +734,39 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     });
   }
 
+  /// Rename the show being built (tap its name in the app bar).
+  Future<void> _renameShowPlaylist() async {
+    final playlist = _showPlaylist;
+    if (playlist == null) return;
+    final controller = TextEditingController(text: playlist.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename show'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Show name'),
+          onSubmitted: (v) => Navigator.pop(context, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty || !mounted) return;
+    setState(() => playlist.name = name);
+    _savePlaylists();
+  }
+
   /// Append the working song to the show, with an Undo.
   void _commitShowSong() {
     final playlist = _showPlaylist;
@@ -2133,8 +2166,23 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             icon: Image.asset('assets/branding/splash.png', height: 40),
           ),
         ),
-        title: Text(_mode == _ScreenMode.freeRunning ? 'Free running' : playlist.name,
-            overflow: TextOverflow.ellipsis),
+        title: _mode == _ScreenMode.show
+            ? InkWell(
+                onTap: _renameShowPlaylist,
+                borderRadius: BorderRadius.circular(8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(playlist.name, overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.edit, size: 18),
+                  ],
+                ),
+              )
+            : Text(_mode == _ScreenMode.freeRunning ? 'Free running' : playlist.name,
+                overflow: TextOverflow.ellipsis),
         actions: [
           _buildBandMenu(),
           IconButton(
