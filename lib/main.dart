@@ -2092,8 +2092,29 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     // A fixed height, so the plot doesn't resize when the badge comes and goes.
     return SizedBox(
       height: _readoutHeight,
-      child: Center(
-        child: FittedBox(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // The mic toggle is pinned to the left of the readout. The readout
+          // keeps clear of it (48 px each side, so it stays centred).
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              tooltip: _isRecording ? 'Stop listening' : 'Start listening',
+              icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),
+              color: _isRecording ? Colors.redAccent : Colors.grey,
+              onPressed: () {
+                if (_isRecording) {
+                  _stopRecording();
+                } else {
+                  _startRecording();
+                }
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: FittedBox(
           fit: BoxFit.scaleDown,
           child: hasTempo
               ? Row(
@@ -2144,7 +2165,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                       fontWeight: FontWeight.w600,
                       color: Colors.grey[400]),
                 ),
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2312,17 +2335,6 @@ class _MetronomeScreenState extends State<MetronomeScreen>
             icon: Icon(_mode == _ScreenMode.freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
             onPressed: () => _setFreeRunning(_mode != _ScreenMode.freeRunning),
           ),
-          IconButton(
-            icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),
-            color: _isRecording ? Colors.redAccent : Colors.grey,
-            onPressed: () {
-              if (_isRecording) {
-                _stopRecording();
-              } else {
-                _startRecording();
-              }
-            },
-          )
         ],
       ),
       drawer: _buildDrawer(),
