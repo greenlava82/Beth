@@ -2146,33 +2146,43 @@ class _MetronomeScreenState extends State<MetronomeScreen>
         : drift.isRushing
             ? 'rushing'
             : 'dragging';
-    return Column(
+    // The arrow on the left, the amount and the word stacked to its right
+    // with a shared left edge, as on the CYD.
+    return Row(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Icon(
+          onTempo
+              ? Icons.check_circle
+              : drift.isRushing
+                  ? Icons.arrow_drop_up
+                  : Icons.arrow_drop_down,
+          size: onTempo ? 28 : 44,
+          color: color,
+        ),
+        SizedBox(width: onTempo ? 6 : 0),
+        Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              onTempo
-                  ? Icons.check_circle
-                  : drift.isRushing
-                      ? Icons.arrow_drop_up
-                      : Icons.arrow_drop_down,
-              size: onTempo ? 26 : 40,
-              color: color,
-            ),
             if (!onTempo)
               Text(
                 '${drift.isRushing ? '+' : '−'}$amount',
                 style: TextStyle(
-                    color: color, fontSize: 22, fontWeight: FontWeight.w700),
+                    color: color,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1),
               ),
+            Text(
+              '$label$octave',
+              style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.1),
+            ),
           ],
-        ),
-        Text(
-          '$label$octave',
-          style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ],
     );
