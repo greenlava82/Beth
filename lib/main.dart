@@ -2158,12 +2158,17 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     ],
                   ],
                 )
-              : Text(
-                  _isRecording ? 'Listening…' : 'Mic off',
-                  style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[400]),
+              : GestureDetector(
+                  // "Mic off" is a big target: tap it to start listening.
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _isRecording ? null : _startRecording,
+                  child: Text(
+                    _isRecording ? 'Listening…' : 'Mic off',
+                    style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[400]),
+                  ),
                 ),
             ),
           ),
