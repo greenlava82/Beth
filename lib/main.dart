@@ -116,6 +116,8 @@ class _MetronomeScreenState extends State<MetronomeScreen>
   final TempoDetector _tempoDetector =
       TempoDetector(sampleRate: _sampleRate, priorOctaveWidth: 0.6);
   double _detectionConfidence = 0;
+  // Debug aid: the confidence pill on the graph (off by default).
+  bool _showConfidenceMeter = false;
   // Count-in: the metronome auto-starts on a new song and pauses itself
   // once the band's detected tempo locks onto the song's marking.
   final TempoLock _tempoLock = TempoLock();
@@ -204,6 +206,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       _bandIcon = BandSyncIcon(savedIcon);
     }
 
+    _showConfidenceMeter = prefs.getBool('showConfidenceMeter') ?? false;
     _displayGate
       ..showAbove = (prefs.getDouble('showConfidence') ??
               TempoDisplayGate.defaultShowAbove)
@@ -343,6 +346,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     await prefs.setDouble('showConfidence', _displayGate.showAbove);
     await prefs.setDouble('confidenceHysteresis', _displayGate.hysteresis);
     await prefs.setDouble('holdSeconds', _displayGate.holdSeconds);
+    await prefs.setBool('showConfidenceMeter', _showConfidenceMeter);
   }
 
   void _resetDetectionSettings(StateSetter setSheet) {
@@ -425,6 +429,17 @@ class _MetronomeScreenState extends State<MetronomeScreen>
           _holdMax,
           20,
           (x) => g.holdSeconds = x,
+        ),
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: _helpLabel(
+              context,
+              'Show confidence on graph',
+              'A live confidence readout along the bottom of the graph. '
+                  'Handy for choosing the sliders above.'),
+          value: _showConfidenceMeter,
+          onChanged: (on) => change(() => _showConfidenceMeter = on),
         ),
       ],
     );
@@ -2514,14 +2529,15 @@ class _MetronomeScreenState extends State<MetronomeScreen>
               children: [
                 Positioned.fill(child: _buildTempoChart(context)),
                 // Confidence light along the bottom of the plot.
-                Positioned(
-                  bottom: 30, // just above the time labels
-                  left: 40,
-                  right: 0,
-                  child: IgnorePointer(
-                    child: Center(child: _buildConfidenceIndicator(context)),
+                if (_showConfidenceMeter)
+                  Positioned(
+                    bottom: 30, // just above the time labels
+                    left: 40,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: Center(child: _buildConfidenceIndicator(context)),
+                    ),
                   ),
-                ),
                 // History length, bottom-right of the plot.
                 Positioned(
                   bottom: 30,
