@@ -1314,6 +1314,58 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     if (wasRecording && mounted) _startRecording();
   }
 
+  /// Choose a playlist; free-running mode ends if it was on.
+  void _selectPlaylist(int index) {
+    if (_mode == _ScreenMode.freeRunning) _setFreeRunning(false);
+    setState(() {
+      _currentPlaylistIndex = index;
+      _currentSetlistIndex = 0;
+      _updateMetronomeTempo();
+    });
+  }
+
+  /// The app bar title: the playlist (or "Free running") with a drop-down.
+  /// "Free run" is pinned at the top, above the playlists.
+  Widget _buildPlaylistSwitcher(Playlist playlist) {
+    const freeRun = -1;
+    final free = _mode == _ScreenMode.freeRunning;
+    return PopupMenuButton<int>(
+      tooltip: 'Switch playlist',
+      position: PopupMenuPosition.under,
+      onSelected: (value) {
+        if (value == freeRun) {
+          _setFreeRunning(true);
+        } else {
+          _selectPlaylist(value);
+        }
+      },
+      itemBuilder: (context) => [
+        CheckedPopupMenuItem(
+          value: freeRun,
+          checked: free,
+          child: const Text('Free run'),
+        ),
+        const PopupMenuDivider(),
+        for (var i = 0; i < _playlists.length; i++)
+          CheckedPopupMenuItem(
+            value: i,
+            checked: !free && i == _currentPlaylistIndex,
+            child: Text(_playlists[i].name, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(free ? 'Free running' : playlist.name,
+                overflow: TextOverflow.ellipsis),
+          ),
+          const Icon(Icons.arrow_drop_down),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBandMenu() {
     final leading = _bandLeader.isActive;
     return PopupMenuButton<void Function()>(
@@ -1353,11 +1405,27 @@ class _MetronomeScreenState extends State<MetronomeScreen>
       // nearby leaders happen to share an icon).
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: !leading
-            ? const Icon(Icons.podcasts)
-            : _bandLeader.error == null
-                ? BandSyncIconBadge(_bandLeader.icon, size: 36)
-                : const Icon(Icons.podcasts, color: Colors.redAccent),
+        // A fixed slot, so the title doesn't shift when leading starts; a red
+        // dot marks an error.
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (!leading)
+                const Icon(Icons.podcasts)
+              else
+                BandSyncIconBadge(_bandLeader.icon, size: 28),
+              if (leading && _bandLeader.error != null)
+                const Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Icon(Icons.circle, size: 10, color: Colors.redAccent),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1781,11 +1849,7 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     ].join(' · ')),
                     selected: _currentPlaylistIndex == index,
                     onTap: () {
-                      setState(() {
-                        _currentPlaylistIndex = index;
-                        _currentSetlistIndex = 0;
-                        _updateMetronomeTempo();
-                      });
+                      _selectPlaylist(index);
                       Navigator.pop(context);
                     },
                     trailing: PopupMenuButton<String>(
@@ -2092,8 +2156,29 @@ class _MetronomeScreenState extends State<MetronomeScreen>
     // A fixed height, so the plot doesn't resize when the badge comes and goes.
     return SizedBox(
       height: _readoutHeight,
-      child: Center(
-        child: FittedBox(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // The mic toggle is pinned to the left of the readout. The readout
+          // keeps clear of it (48 px each side, so it stays centred).
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              tooltip: _isRecording ? 'Stop listening' : 'Start listening',
+              icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),
+              color: _isRecording ? Colors.redAccent : Colors.grey,
+              onPressed: () {
+                if (_isRecording) {
+                  _stopRecording();
+                } else {
+                  _startRecording();
+                }
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: FittedBox(
           fit: BoxFit.scaleDown,
           child: hasTempo
               ? Row(
@@ -2137,14 +2222,21 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                     ],
                   ],
                 )
-              : Text(
-                  _isRecording ? 'Listening…' : 'Mic off',
-                  style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[400]),
+              : GestureDetector(
+                  // "Mic off" is a big target: tap it to start listening.
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _isRecording ? null : _startRecording,
+                  child: Text(
+                    _isRecording ? 'Listening…' : 'Mic off',
+                    style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[400]),
+                  ),
                 ),
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2277,15 +2369,25 @@ class _MetronomeScreenState extends State<MetronomeScreen>
 
     return Scaffold(
       appBar: AppBar(
-        // The Beth mark opens the playlists drawer (in place of the
-        // usual hamburger icon); the title is the current playlist.
+        // The Beth mark opens the playlists drawer. A vertical "more" mark
+        // is part of the button so it reads as a menu, in the same space.
         leading: Builder(
           builder: (context) => IconButton(
             tooltip: 'Playlists',
             onPressed: () => Scaffold.of(context).openDrawer(),
             // The image has padding around the mark; 40 makes the mark itself
             // about the size of a regular toolbar icon.
-            icon: Image.asset('assets/branding/splash.png', height: 40),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Image.asset('assets/branding/splash.png', height: 40),
+                const Positioned(
+                  left: -6,
+                  child: Icon(Icons.more_vert, size: 18),
+                ),
+              ],
+            ),
           ),
         ),
         title: _mode == _ScreenMode.show
@@ -2303,26 +2405,9 @@ class _MetronomeScreenState extends State<MetronomeScreen>
                   ],
                 ),
               )
-            : Text(_mode == _ScreenMode.freeRunning ? 'Free running' : playlist.name,
-                overflow: TextOverflow.ellipsis),
+            : _buildPlaylistSwitcher(playlist),
         actions: [
           _buildBandMenu(),
-          IconButton(
-            tooltip: _mode == _ScreenMode.freeRunning ? 'Back to setlist' : 'Free-running mode',
-            icon: Icon(_mode == _ScreenMode.freeRunning ? Icons.close_fullscreen : Icons.open_in_full),
-            onPressed: () => _setFreeRunning(_mode != _ScreenMode.freeRunning),
-          ),
-          IconButton(
-            icon: Icon(_isRecording ? Icons.mic : Icons.mic_off),
-            color: _isRecording ? Colors.redAccent : Colors.grey,
-            onPressed: () {
-              if (_isRecording) {
-                _stopRecording();
-              } else {
-                _startRecording();
-              }
-            },
-          )
         ],
       ),
       drawer: _buildDrawer(),
