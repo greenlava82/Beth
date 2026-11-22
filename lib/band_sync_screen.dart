@@ -287,7 +287,8 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
             style: TextStyle(
               fontSize: 96,
               fontWeight: FontWeight.bold,
-              color: heardColor ?? theme.colorScheme.onSurface,
+              color: (heardColor ?? theme.colorScheme.onSurface)
+                  .withValues(alpha: _heardAlpha(s.confidence, live)),
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
@@ -312,8 +313,6 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
               ),
             ),
           ),
-        const SizedBox(height: 8),
-        _confidenceBar(s.confidence, live),
       ],
     );
 
@@ -345,32 +344,10 @@ class _BandSyncFollowerScreenState extends State<BandSyncFollowerScreen> {
     );
   }
 
-  Widget _confidenceBar(double c, bool live) {
-    final color = !live
-        ? Colors.grey
-        : c >= 0.5
-        ? Colors.greenAccent
-        : c >= 0.2
-        ? Colors.amber
-        : Colors.redAccent;
-    return SizedBox(
-      width: 160,
-      child: Column(
-        children: [
-          LinearProgressIndicator(
-            value: c,
-            color: color,
-            backgroundColor: Colors.white12,
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'confidence',
-            style: TextStyle(color: Colors.grey, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
+  /// Fades the heard BPM when the leader's confidence is low: full strength
+  /// from 0.4 up, down to 40% at 0. A stale link is not dimmed by this.
+  double _heardAlpha(double confidence, bool live) =>
+      live ? 0.4 + 0.6 * (confidence / 0.4).clamp(0.0, 1.0) : 1.0;
 
   /// Never let a frozen reading look live.
   Widget _linkBanner(BandSyncLink link) {
